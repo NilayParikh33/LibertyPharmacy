@@ -7,7 +7,9 @@ import {
   verifyPassword,
   generateSessionToken,
   hashSessionToken,
+  generateOtpCode,
 } from "./crypto";
+import { sendOtpEmail } from "./mail";
 
 /**
  * Authentication + patient-record service.
@@ -23,7 +25,10 @@ import {
  */
 
 export const SESSION_COOKIE = "lp_session";
+export const MFA_COOKIE = "lp_mfa";
 const SESSION_TTL_MS = 30 * 60 * 1000; // 30 min — short by design for PHI apps
+const MFA_TTL_MS = 10 * 60 * 1000; // pending challenges live 10 minutes
+const MAX_CODE_ATTEMPTS = 5;
 const MAX_FAILED_LOGINS = 5;
 const LOCKOUT_MS = 15 * 60 * 1000;
 
@@ -84,8 +89,11 @@ export function registerPatient(
   }
 
   const createAll = db.transaction(() => {
+    // email_verified explicitly 0: the column default differs between fresh
+    // databases (0) and ones migrated from the pre-MFA schema (1, to
+    // grandfather old accounts) — new accounts must always start unverified.
     const acct = db
-      .prepare("INSERT INTO accounts (email, password_hash) VALUES (?, ?)")
+      .prepare("INSERT INTO accounts (email, password_hash, email_verified) VALUES (?, ?, 0)")
       .run(email, hashPassword(input.password));
     const accountId = Number(acct.lastInsertRowid);
 
@@ -137,14 +145,18 @@ export function loginPatient(
   emailRaw: string,
   password: string,
   ip?: string
-): { ok: true; accountId: number } | { ok: false; error: string; status: number } {
+):
+  | { ok: true; accountId: number; email: string; emailVerified: boolean }
+  | { ok: false; error: string; status: number } {
   const db = getDb();
   const email = emailRaw.trim().toLowerCase();
   const generic = { ok: false as const, error: "Invalid email or password.", status: 401 };
 
   const acct = db
-    .prepare("SELECT id, password_hash, failed_logins, locked_until FROM accounts WHERE email = ?")
-    .get(email) as { id: number; password_hash: string; failed_logins: number; locked_until: string | null } | undefined;
+    .prepare("SELECT id, password_hash, failed_logins, locked_until, email_verified FROM accounts WHERE email = ?")
+    .get(email) as
+    | { id: number; password_hash: string; failed_logins: number; locked_until: string | null; email_verified: number }
+    | undefined;
 
   if (!acct) {
     audit({ actor: "anonymous", action: "auth.login", outcome: "failure", detail: "unknown_email", ip });
@@ -169,8 +181,111 @@ export function loginPatient(
   }
 
   db.prepare("UPDATE accounts SET failed_logins = 0, locked_until = NULL WHERE id = ?").run(acct.id);
-  audit({ actor: `account:${acct.id}`, action: "auth.login", outcome: "success", ip });
-  return { ok: true, accountId: acct.id };
+  audit({ actor: `account:${acct.id}`, action: "auth.login", outcome: "success", detail: "password_ok_pending_mfa", ip });
+  return { ok: true, accountId: acct.id, email, emailVerified: acct.email_verified === 1 };
+}
+
+// ---------------------------------------------------------------------------
+// Email verification / login MFA challenges
+// ---------------------------------------------------------------------------
+
+export type MfaPurpose = "email_verify" | "login_mfa";
+
+/**
+ * Start (or restart) a one-time-code challenge for an account: stores hashed
+ * code + pending token, sets the pending cookie, emails the code.
+ */
+export async function startMfaChallenge(accountId: number, email: string, purpose: MfaPurpose): Promise<void> {
+  const db = getDb();
+  const token = generateSessionToken();
+  const code = generateOtpCode();
+  const expires = new Date(Date.now() + MFA_TTL_MS);
+
+  // One live challenge per account/purpose — a resend invalidates the old code.
+  db.prepare("DELETE FROM mfa_pending WHERE account_id = ? AND purpose = ?").run(accountId, purpose);
+  db.prepare(
+    "INSERT INTO mfa_pending (token_hash, account_id, purpose, code_hash, expires_at) VALUES (?, ?, ?, ?, ?)"
+  ).run(hashSessionToken(token), accountId, purpose, hashSessionToken(code), expires.toISOString());
+
+  (await cookies()).set(MFA_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    expires,
+  });
+
+  await sendOtpEmail(email, code, purpose);
+  audit({ actor: `account:${accountId}`, action: `auth.mfa.${purpose}.sent`, outcome: "success" });
+}
+
+/** The account+purpose behind the browser's pending cookie, if still valid. */
+async function getPendingChallenge(): Promise<
+  { id: number; accountId: number; purpose: MfaPurpose; attempts: number; codeHash: string } | null
+> {
+  const token = (await cookies()).get(MFA_COOKIE)?.value;
+  if (!token) return null;
+  const row = getDb()
+    .prepare("SELECT id, account_id, purpose, attempts, code_hash, expires_at FROM mfa_pending WHERE token_hash = ?")
+    .get(hashSessionToken(token)) as
+    | { id: number; account_id: number; purpose: MfaPurpose; attempts: number; code_hash: string; expires_at: string }
+    | undefined;
+  if (!row) return null;
+  if (new Date(row.expires_at) <= new Date()) {
+    getDb().prepare("DELETE FROM mfa_pending WHERE id = ?").run(row.id);
+    return null;
+  }
+  return { id: row.id, accountId: row.account_id, purpose: row.purpose, attempts: row.attempts, codeHash: row.code_hash };
+}
+
+/**
+ * Verify the submitted code. On success: email_verify activates the account;
+ * both purposes end with a real session. On repeated failure the challenge is
+ * destroyed and the user must restart.
+ */
+export async function completeMfaChallenge(
+  code: string,
+  ip?: string
+): Promise<{ ok: true; purpose: MfaPurpose } | { ok: false; error: string; status: number }> {
+  const db = getDb();
+  const pending = await getPendingChallenge();
+  if (!pending) {
+    return { ok: false, error: "Your code has expired. Please sign in again to get a new one.", status: 401 };
+  }
+
+  if (hashSessionToken(code.trim()) !== pending.codeHash) {
+    const attempts = pending.attempts + 1;
+    if (attempts >= MAX_CODE_ATTEMPTS) {
+      db.prepare("DELETE FROM mfa_pending WHERE id = ?").run(pending.id);
+      audit({ actor: `account:${pending.accountId}`, action: `auth.mfa.${pending.purpose}.verify`, outcome: "failure", detail: "too_many_attempts", ip });
+      return { ok: false, error: "Too many incorrect codes. Please sign in again to get a new one.", status: 429 };
+    }
+    db.prepare("UPDATE mfa_pending SET attempts = ? WHERE id = ?").run(attempts, pending.id);
+    audit({ actor: `account:${pending.accountId}`, action: `auth.mfa.${pending.purpose}.verify`, outcome: "failure", detail: "bad_code", ip });
+    return { ok: false, error: "That code isn't right. Please check your email and try again.", status: 400 };
+  }
+
+  db.prepare("DELETE FROM mfa_pending WHERE id = ?").run(pending.id);
+  if (pending.purpose === "email_verify") {
+    db.prepare("UPDATE accounts SET email_verified = 1 WHERE id = ?").run(pending.accountId);
+  }
+  audit({ actor: `account:${pending.accountId}`, action: `auth.mfa.${pending.purpose}.verify`, outcome: "success", ip });
+
+  (await cookies()).delete(MFA_COOKIE);
+  await createSession(pending.accountId);
+  return { ok: true, purpose: pending.purpose };
+}
+
+/** Re-issue the code for the browser's pending challenge (resend button). */
+export async function resendMfaCode(): Promise<{ ok: boolean }> {
+  const pending = await getPendingChallenge();
+  if (!pending) return { ok: false };
+  const acct = getDb().prepare("SELECT email FROM accounts WHERE id = ?").get(pending.accountId) as
+    | { email: string }
+    | undefined;
+  if (!acct) return { ok: false };
+  await startMfaChallenge(pending.accountId, acct.email, pending.purpose);
+  return { ok: true };
 }
 
 export async function createSession(accountId: number): Promise<void> {

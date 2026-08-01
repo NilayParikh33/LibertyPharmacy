@@ -17,7 +17,8 @@ npm-debug.log*
 
 # env files — never commit secrets (DRX API keys will live here later)
 .env
-.env.local
+# .env.local is intentionally COMMITTED for the demo phase (private repo).
+# Must be removed from version control before real patient data exists.
 .env.development.local
 .env.test.local
 .env.production.local

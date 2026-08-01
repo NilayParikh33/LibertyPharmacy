@@ -2,6 +2,7 @@ import {
   createCipheriv,
   createDecipheriv,
   randomBytes,
+  randomInt,
   scryptSync,
   timingSafeEqual,
   createHash,
@@ -76,6 +77,11 @@ export function verifyPassword(password: string, stored: string): boolean {
 
 export function generateSessionToken(): string {
   return randomBytes(32).toString("base64url");
+}
+
+/** 6-digit one-time code for email verification / login MFA. */
+export function generateOtpCode(): string {
+  return String(randomInt(0, 1000000)).padStart(6, "0");
 }
 
 export function hashSessionToken(token: string): string {

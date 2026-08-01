@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { loginPatient, createSession } from "@/lib/auth";
+import { loginPatient, startMfaChallenge } from "@/lib/auth";
 
 const loginSchema = z.object({
   email: z.string().trim().email().max(254),
@@ -28,6 +28,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  await createSession(result.accountId);
-  return NextResponse.json({ ok: true });
+  // Password alone never grants a session. Unverified accounts must first
+  // activate via the emailed code; verified accounts get a login MFA code.
+  const purpose = result.emailVerified ? "login_mfa" : "email_verify";
+  await startMfaChallenge(result.accountId, result.email, purpose);
+  return NextResponse.json({ ok: true, next: "verify", purpose });
 }

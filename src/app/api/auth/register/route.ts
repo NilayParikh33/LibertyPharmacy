@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { registerPatient, createSession } from "@/lib/auth";
+import { registerPatient, startMfaChallenge } from "@/lib/auth";
 
 /**
  * Patient registration.
@@ -122,6 +122,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: result.error }, { status: 409 });
   }
 
-  await createSession(result.accountId);
-  return NextResponse.json({ ok: true });
+  // Account exists but is NOT active until the emailed code is confirmed.
+  await startMfaChallenge(result.accountId, d.email.trim().toLowerCase(), "email_verify");
+  return NextResponse.json({ ok: true, next: "verify" });
 }

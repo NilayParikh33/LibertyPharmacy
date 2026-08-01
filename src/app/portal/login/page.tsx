@@ -29,7 +29,7 @@ export default function LoginPage() {
         setError(data.error ?? "Unable to sign in. Please try again.");
         return;
       }
-      router.push("/portal");
+      router.push("/portal/verify");
       router.refresh();
     } catch {
       setError("Something went wrong. Please try again.");

@@ -75,7 +75,7 @@ export default function RegisterPage() {
         window.scrollTo({ top: 0, behavior: "smooth" });
         return;
       }
-      router.push("/portal?registered=1");
+      router.push("/portal/verify?new=1");
       router.refresh();
     } catch {
       setError("Something went wrong. Please try again.");
