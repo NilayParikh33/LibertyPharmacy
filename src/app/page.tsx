@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { site } from "@/lib/site";
+import { getSessionAccountId } from "@/lib/auth";
 
 const stats = [
   { value: "20+", label: "Years Serving Austin" },
@@ -34,7 +35,8 @@ const services = [
   { title: "Medication Sync", body: "Align all your refills to a single monthly pickup — one trip, everything ready." },
 ];
 
-export default function HomePage() {
+export default async function HomePage() {
+  const signedIn = (await getSessionAccountId()) !== null;
   return (
     <>
       {/* Hero */}
@@ -53,9 +55,15 @@ export default function HomePage() {
               who know you by name.
             </p>
             <div className="mt-8 flex flex-wrap gap-4">
-              <Link href="/portal" className="btn-accent">
-                New Patient
-              </Link>
+              {signedIn ? (
+                <Link href="/portal" className="btn-accent">
+                  My Portal
+                </Link>
+              ) : (
+                <Link href="/portal/register" className="btn-accent">
+                  New Patient
+                </Link>
+              )}
               <Link href="/portal" className="btn-outline !border-white !text-white hover:!bg-white/10">
                 Transfer a Prescription
               </Link>

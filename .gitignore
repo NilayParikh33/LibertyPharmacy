@@ -26,3 +26,6 @@ npm-debug.log*
 *.tsbuildinfo
 next-env.d.ts
 .claude/settings.local.json
+
+# local patient database — never commit (contains encrypted PHI)
+/data/

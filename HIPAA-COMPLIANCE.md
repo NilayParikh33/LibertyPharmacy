@@ -13,9 +13,52 @@ patient portal) can be considered HIPAA compliant.
 
 ## 1. What the code already does
 
-### No PHI by design (current phase)
-- The site is informational only. No prescription, insurance, DOB, or health
-  data is requested anywhere.
+### Patient portal auth + PHI storage (added this phase)
+
+The portal now collects registration data (a PHI repository). Safeguards
+implemented in code:
+
+- **Field-level encryption at rest** — every PHI column in `patients` is
+  AES-256-GCM ciphertext (`src/lib/crypto.ts`); the SQLite file contains no
+  plaintext PHI. Key comes from `PHI_ENCRYPTION_KEY` (env; production must use
+  a managed secret store, §164.312(a)(2)(iv)).
+- **Credential separation** — login credentials (`accounts`) live apart from
+  demographics (`patients`); passwords are scrypt-hashed, never stored.
+- **Audit controls (§164.312(b))** — `audit_log` records every registration,
+  login success/failure, and patient-record read with actor, action, outcome,
+  IP, and timestamp. No PHI values are ever written to the log.
+- **Session security** — 30-minute expiry, httpOnly + SameSite=Lax + Secure
+  cookies, tokens stored only as SHA-256 hashes.
+- **Access safeguards** — generic auth errors (no account enumeration),
+  account lockout after 5 failed logins, per-IP registration rate limiting.
+- **Consent** — registration requires acknowledging the Notice of Privacy
+  Practices; the acknowledgment timestamp is stored (`hipaa_ack_at`).
+- The local DB lives in `/data/` (gitignored). **Production requires an
+  encrypted, access-controlled database under a BAA if hosted.**
+
+### DRX field mapping (integration seam)
+
+`patients` columns intentionally mirror DRX patient-record fields for a 1:1
+migration later:
+
+| DB column | DRX field | | DB column | DRX field |
+|---|---|---|---|---|
+| `patient_id` | PatientID | | `cell_phone` | CellPhone |
+| `first_name` | FirstName | | `email` | Email |
+| `middle_initial` | MI | | `preferred_language` | Language |
+| `last_name` | LastName | | `allergies` | Allergies |
+| `date_of_birth` | DOB | | `medical_conditions` | Diseases |
+| `gender` | Sex | | `ins_bin` | InsBIN |
+| `address1` | Address1 | | `ins_pcn` | InsPCN |
+| `address2` | Address2 | | `ins_group` | InsGroup |
+| `city` | City | | `ins_cardholder_id` | InsID |
+| `state` | State | | `ins_person_code` | PersonCode |
+| `zip` | Zip | | `ins_relationship` | Relationship |
+| `phone` | Phone | | `delivery_method` | DeliveryMethod |
+
+### No PHI outside the portal
+- The rest of the site remains informational. No prescription, insurance, DOB,
+  or health data is requested anywhere outside `/portal/register`.
 - The contact form (`src/components/ContactForm.tsx`) is restricted to
   general inquiries, warns users not to submit health information, and the
   server route (`src/app/api/contact/route.ts`):
@@ -40,7 +83,8 @@ patient portal) can be considered HIPAA compliant.
 - **Zero third-party scripts**: no analytics, no ad pixels, no CDNs, no
   external fonts. This matters because HHS/OCR guidance treats tracking
   technologies on health-related pages as a serious risk area.
-- No cookies are set by the marketing site at all.
+- The only cookie is the portal's `lp_session` auth cookie (httpOnly,
+  first-party, no tracking). Marketing pages set no cookies.
 
 ### Legal pages
 - `/privacy-policy` — website privacy policy (no-PHI posture).

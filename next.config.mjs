@@ -22,9 +22,14 @@
  *                              When DRX integration lands, add the DRX API origin
  *                              here (e.g. https://liberty.drxrefill.com).
  */
+// Next.js DEV MODE only: react-refresh (hot reload) uses eval(), and blocking
+// it prevents React from hydrating at all (no client-side interactivity).
+// 'unsafe-eval' is never sent in production builds.
+const isDev = process.env.NODE_ENV === "development";
+
 const csp = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self'",
