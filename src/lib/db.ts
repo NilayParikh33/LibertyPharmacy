@@ -41,10 +41,25 @@ function init(): Database.Database {
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
       email         TEXT NOT NULL UNIQUE,        -- login identifier (lowercased)
       password_hash TEXT NOT NULL,               -- scrypt, never plaintext
+      email_verified INTEGER NOT NULL DEFAULT 0, -- 0 until the emailed code is confirmed
       failed_logins INTEGER NOT NULL DEFAULT 0,
       locked_until  TEXT,                        -- ISO8601; lockout after repeated failures
       created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
       updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+
+    -- One-time-code challenges for email verification and login MFA.
+    -- The browser holds an opaque pending token (cookie); the emailed 6-digit
+    -- code is stored only as a hash. Both expire quickly.
+    CREATE TABLE IF NOT EXISTS mfa_pending (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_hash  TEXT NOT NULL UNIQUE,          -- SHA-256 of the pending cookie token
+      account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+      purpose     TEXT NOT NULL CHECK (purpose IN ('email_verify','login_mfa')),
+      code_hash   TEXT NOT NULL,                 -- SHA-256 of the 6-digit code
+      attempts    INTEGER NOT NULL DEFAULT 0,    -- wrong-code count; challenge dies at 5
+      expires_at  TEXT NOT NULL,
+      created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
 
     -- DRX-aligned patient record. [enc] = AES-256-GCM ciphertext at rest.
@@ -103,6 +118,14 @@ function init(): Database.Database {
     );
     CREATE INDEX IF NOT EXISTS idx_audit_at ON audit_log(at);
   `);
+
+  // Migration for databases created before email verification existed.
+  const accountCols = db.prepare("PRAGMA table_info(accounts)").all() as { name: string }[];
+  if (!accountCols.some((c) => c.name === "email_verified")) {
+    // Pre-existing accounts were created without verification; grandfather them
+    // in as verified rather than locking their owners out.
+    db.exec("ALTER TABLE accounts ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 1");
+  }
 
   return db;
 }
