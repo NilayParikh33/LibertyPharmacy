@@ -70,7 +70,7 @@ export default function PrivacyPolicyPage() {
           </div>
 
           <div>
-            <h2 className="text-xl font-bold text-navy-900">Children's privacy</h2>
+            <h2 className="text-xl font-bold text-navy-900">Children&apos;s privacy</h2>
             <p className="mt-3 leading-7 text-slate-600">
               This website is not directed at children under 13 and we do not
               knowingly collect information from them.

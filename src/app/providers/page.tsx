@@ -53,7 +53,7 @@ export default function ProvidersPage() {
               clinics, and their patients. Many of the medications we compound
               are used to treat complex conditions and unique disease states.
               Our compounding pharmacists work directly with your practice to
-              customize medications to each patient's needs — and we're always
+              customize medications to each patient&apos;s needs — and we&apos;re always
               available to answer questions and provide formulation
               recommendations.
             </p>
@@ -76,7 +76,7 @@ export default function ProvidersPage() {
             </h2>
             <p className="mx-auto mt-2 max-w-lg text-sm text-navy-100">
               Call our pharmacist line at {site.phone} or send us a message —
-              we'll get back to your office promptly.
+              we&apos;ll get back to your office promptly.
             </p>
             <Link href="/contact" className="btn-accent mt-6">
               Contact Our Team

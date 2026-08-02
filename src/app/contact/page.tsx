@@ -68,7 +68,7 @@ export default function ContactPage() {
               <br />
               Please call us directly — phone conversations with our
               pharmacists are the safest way to discuss your health
-              information. This website's form is for general questions only.
+              information. This website&apos;s form is for general questions only.
             </div>
           </div>
 

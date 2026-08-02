@@ -58,7 +58,7 @@ export default function AboutPage() {
               because it genuinely helps the people we serve.
             </p>
             <p className="mt-4 leading-7 text-slate-600">
-              We're proud to serve the Spicewood Springs community and all of
+              We&apos;re proud to serve the Spicewood Springs community and all of
               greater Austin.
             </p>
           </div>

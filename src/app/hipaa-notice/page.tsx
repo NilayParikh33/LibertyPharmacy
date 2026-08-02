@@ -86,7 +86,7 @@ export default function HipaaNoticePage() {
               <li>Ask us to correct records you believe are wrong or incomplete.</li>
               <li>Request confidential communications (e.g., contact you only at a specific number).</li>
               <li>Ask us to limit what we use or share.</li>
-              <li>Get a list of those with whom we've shared your information.</li>
+              <li>Get a list of those with whom we&apos;ve shared your information.</li>
               <li>Get a paper copy of this notice at any time.</li>
               <li>Choose someone to act for you (medical power of attorney or legal guardian).</li>
               <li>

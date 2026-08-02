@@ -1,0 +1,10 @@
+How we have followed Hipaa Compliant rules while building this website?
+-> while login or signup we have encrypted all your patients data so it will be stored in database in encrypted format also so your patient security will be hire which will cover 
+PHI(Protected Health Information).
+-> While Signup we will do Verify Email Account with Email OTP.
+-> Once our Web Application will be in final touch we will provide MFA(Multi Factor Authentication with AWS If needed.)
+-> we are currently applying 30 minutes of Auto Logout functionality for inactivity.
+-> Currently we are logging reading and writing audit logs for better track records and troubleshooting.
+-> 5 Failed login attempts will result into 15 minutes of lockout.
+-> Consent tracking — hipaa_ack_at timestamp records when the patient acknowledged the Notice of Privacy Practices at registration.
+-> For Domain Hosting we will use AWS because AWS Lightsail provides better security for Patient's data.

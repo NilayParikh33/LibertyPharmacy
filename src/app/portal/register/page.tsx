@@ -306,7 +306,7 @@ export default function RegisterPage() {
                   className="mt-1 h-4 w-4 rounded border-slate-300 text-navy-700 focus:ring-navy-500"
                 />
                 <span>
-                  I acknowledge that I have been offered Liberty Pharmacy's{" "}
+                  I acknowledge that I have been offered Liberty Pharmacy&apos;s{" "}
                   <Link href="/hipaa-notice" target="_blank" className="font-medium text-navy-700 underline">
                     Notice of Privacy Practices
                   </Link>{" "}

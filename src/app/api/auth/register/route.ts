@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { registerPatient, createSession } from "@/lib/auth";
+import { getClientIp } from "@/lib/request";
 
 /**
  * Patient registration.
@@ -68,6 +69,10 @@ const registrationSchema = z.object({
 const attempts = new Map<string, { count: number; resetAt: number }>();
 function rateLimited(ip: string): boolean {
   const now = Date.now();
+  // Opportunistic sweep so a client rotating IPs can't grow this map forever.
+  for (const [key, slot] of attempts) {
+    if (slot.resetAt < now) attempts.delete(key);
+  }
   const slot = attempts.get(ip);
   if (!slot || slot.resetAt < now) {
     attempts.set(ip, { count: 1, resetAt: now + 10 * 60 * 1000 });
@@ -78,7 +83,7 @@ function rateLimited(ip: string): boolean {
 }
 
 export async function POST(request: Request) {
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
+  const ip = getClientIp(request);
   if (rateLimited(ip)) {
     return NextResponse.json({ error: "Too many attempts. Please try again later." }, { status: 429 });
   }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { loginPatient, createSession } from "@/lib/auth";
+import { getClientIp } from "@/lib/request";
 
 const loginSchema = z.object({
   email: z.string().trim().email().max(254),
@@ -8,7 +9,7 @@ const loginSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
+  const ip = getClientIp(request);
 
   let body: unknown;
   try {

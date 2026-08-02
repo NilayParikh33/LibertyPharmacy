@@ -82,7 +82,7 @@ export default function ServicesPage() {
             </h2>
             <p className="mx-auto mt-2 max-w-lg text-sm text-slate-600">
               Call us or send a general inquiry — our pharmacists are happy to
-              help you figure out what's right for you.
+              help you figure out what&apos;s right for you.
             </p>
             <Link href="/contact" className="btn-primary mt-6">
               Contact Us

@@ -64,7 +64,7 @@ export default async function PortalPage({
                 className="mb-8 rounded-xl border border-green-200 bg-green-50 p-5 text-sm leading-6 text-green-800"
               >
                 <strong>Registration successful — welcome to Liberty Pharmacy!</strong>{" "}
-                Your account has been created and you're now signed in.
+                Your account has been created and you&apos;re now signed in.
               </div>
             )}
             <div className="mb-10 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 p-6">
@@ -107,7 +107,7 @@ export default async function PortalPage({
               <a href={site.phoneHref} className="font-semibold text-navy-700 underline">
                 {site.phone}
               </a>{" "}
-              — we're happy to handle refills and transfers by phone.
+              — we&apos;re happy to handle refills and transfers by phone.
             </div>
           </div>
         </section>
@@ -155,7 +155,7 @@ export default async function PortalPage({
             <a href={site.phoneHref} className="font-semibold text-navy-700 underline">
               {site.phone}
             </a>{" "}
-            and we'll take care of everything.
+            and we&apos;ll take care of everything.
           </div>
         </div>
       </section>
