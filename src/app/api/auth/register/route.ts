@@ -105,7 +105,7 @@ export async function POST(request: Request) {
   }
 
   const d = parsed.data;
-  const result = registerPatient(
+  const result = await registerPatient(
     {
       ...d,
       middleInitial: d.middleInitial || undefined,

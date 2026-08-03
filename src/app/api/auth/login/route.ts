@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid email or password." }, { status: 400 });
   }
 
-  const result = loginPatient(parsed.data.email, parsed.data.password, ip);
+  const result = await loginPatient(parsed.data.email, parsed.data.password, ip);
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }

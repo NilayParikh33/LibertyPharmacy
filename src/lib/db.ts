@@ -1,10 +1,18 @@
-import Database from "better-sqlite3";
+import sqlite3 from "sqlite3";
 import path from "path";
 import fs from "fs";
 
 /**
  * SQLite data layer — local development stand-in for the eventual
  * BAA-covered production database.
+ *
+ * Uses the classic `sqlite3` driver (not `better-sqlite3`): on this project's
+ * dev machine, better-sqlite3's prebuilt native binary reproducibly
+ * segfaults on any query — confirmed in isolation with no Next.js involved,
+ * across multiple package versions, unrelated to this app's code. `sqlite3`
+ * loads and runs correctly here, so the small promise-based wrapper below
+ * (`prepare().get/all/run()`, `exec()`, `transaction()`) gives the rest of
+ * the codebase the same shape better-sqlite3 had, just async.
  *
  * HIPAA-conscious design decisions:
  *  - Credentials (accounts) are stored separately from demographics/PHI
@@ -25,18 +33,69 @@ import fs from "fs";
 const DATA_DIR = path.join(process.cwd(), "data");
 const DB_PATH = path.join(DATA_DIR, "liberty.db");
 
-declare global {
-  // eslint-disable-next-line no-var
-  var __libertyDb: Database.Database | undefined;
+interface RunResult {
+  lastInsertRowid: number;
+  changes: number;
 }
 
-function init(): Database.Database {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  const db = new Database(DB_PATH);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
+/** Thin promise-based wrapper matching the small subset of the
+ * prepare/get/run/all/exec/transaction shape this app relies on. */
+class AppDb {
+  constructor(private raw: sqlite3.Database) {}
 
-  db.exec(`
+  exec(sql: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.raw.exec(sql, (err) => (err ? reject(err) : resolve()));
+    });
+  }
+
+  prepare(sql: string) {
+    const raw = this.raw;
+    return {
+      get<T = unknown>(...params: unknown[]): Promise<T | undefined> {
+        return new Promise((resolve, reject) => {
+          raw.get(sql, params, (err, row) => (err ? reject(err) : resolve(row as T | undefined)));
+        });
+      },
+      all<T = unknown>(...params: unknown[]): Promise<T[]> {
+        return new Promise((resolve, reject) => {
+          raw.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows as T[])));
+        });
+      },
+      run(...params: unknown[]): Promise<RunResult> {
+        return new Promise((resolve, reject) => {
+          raw.run(sql, params, function (err) {
+            if (err) reject(err);
+            else resolve({ lastInsertRowid: this.lastID, changes: this.changes });
+          });
+        });
+      },
+    };
+  }
+
+  async transaction<T>(fn: () => Promise<T>): Promise<T> {
+    await this.exec("BEGIN");
+    try {
+      const result = await fn();
+      await this.exec("COMMIT");
+      return result;
+    } catch (err) {
+      await this.exec("ROLLBACK").catch(() => {});
+      throw err;
+    }
+  }
+}
+
+async function init(): Promise<AppDb> {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  const raw = await new Promise<sqlite3.Database>((resolve, reject) => {
+    const conn = new sqlite3.Database(DB_PATH, (err) => (err ? reject(err) : resolve(conn)));
+  });
+  const db = new AppDb(raw);
+  await db.exec("PRAGMA journal_mode = WAL");
+  await db.exec("PRAGMA foreign_keys = ON");
+
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS accounts (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
       email         TEXT NOT NULL UNIQUE,        -- login identifier (lowercased)
@@ -120,34 +179,41 @@ function init(): Database.Database {
   `);
 
   // Migration for databases created before email verification existed.
-  const accountCols = db.prepare("PRAGMA table_info(accounts)").all() as { name: string }[];
+  const accountCols = await db.prepare("PRAGMA table_info(accounts)").all<{ name: string }>();
   if (!accountCols.some((c) => c.name === "email_verified")) {
     // Pre-existing accounts were created without verification; grandfather them
     // in as verified rather than locking their owners out.
-    db.exec("ALTER TABLE accounts ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 1");
+    await db.exec("ALTER TABLE accounts ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 1");
   }
 
   return db;
 }
 
-/** Reuse one connection across Next.js hot reloads. */
-export function getDb(): Database.Database {
-  if (!globalThis.__libertyDb) globalThis.__libertyDb = init();
-  return globalThis.__libertyDb;
+declare global {
+  // eslint-disable-next-line no-var
+  var __libertyDbPromise: Promise<AppDb> | undefined;
 }
 
-export function audit(entry: {
+/** Reuse one connection across Next.js hot reloads. */
+export function getDb(): Promise<AppDb> {
+  if (!globalThis.__libertyDbPromise) globalThis.__libertyDbPromise = init();
+  return globalThis.__libertyDbPromise;
+}
+
+export async function audit(entry: {
   actor: string;
   action: string;
   subject?: string;
   outcome: "success" | "failure";
   detail?: string;
   ip?: string;
-}): void {
-  getDb()
+}): Promise<void> {
+  const db = await getDb();
+  const e = { subject: null, detail: null, ip: null, ...entry };
+  await db
     .prepare(
       `INSERT INTO audit_log (actor, action, subject, outcome, detail, ip)
-       VALUES (@actor, @action, @subject, @outcome, @detail, @ip)`
+       VALUES (?, ?, ?, ?, ?, ?)`
     )
-    .run({ subject: null, detail: null, ip: null, ...entry });
+    .run(e.actor, e.action, e.subject, e.outcome, e.detail, e.ip);
 }

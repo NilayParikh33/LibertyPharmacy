@@ -28,7 +28,7 @@ export default async function PortalPage({
 }) {
   const { registered } = await searchParams;
   const accountId = await getSessionAccountId();
-  const profile = accountId ? getPatientProfile(accountId) : null;
+  const profile = accountId ? await getPatientProfile(accountId) : null;
 
   if (profile) {
     const comingSoon = [

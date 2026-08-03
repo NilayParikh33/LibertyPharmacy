@@ -9,7 +9,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Not signed in." }, { status: 401 });
   }
   const ip = getClientIp(request);
-  const profile = getPatientProfile(accountId, ip);
+  const profile = await getPatientProfile(accountId, ip);
   if (!profile) {
     return NextResponse.json({ error: "Not signed in." }, { status: 401 });
   }

@@ -74,114 +74,114 @@ export interface PatientProfile {
 
 const enc = (v: string | undefined | null) => (v ? encryptPHI(v) : null);
 
-export function registerPatient(
+export async function registerPatient(
   input: RegistrationInput,
   ip?: string
-): { ok: true; accountId: number } | { ok: false; error: string } {
-  const db = getDb();
+): Promise<{ ok: true; accountId: number } | { ok: false; error: string }> {
+  const db = await getDb();
   const email = input.email.trim().toLowerCase();
 
-  const existing = db.prepare("SELECT id FROM accounts WHERE email = ?").get(email);
+  const existing = await db.prepare("SELECT id FROM accounts WHERE email = ?").get(email);
   if (existing) {
-    audit({ actor: "anonymous", action: "auth.register", outcome: "failure", detail: "duplicate_email", ip });
+    await audit({ actor: "anonymous", action: "auth.register", outcome: "failure", detail: "duplicate_email", ip });
     // Same message as success path would imply — do not confirm which emails exist.
     return { ok: false, error: "Unable to create an account with these details. If you already have an account, please sign in." };
   }
 
-  const createAll = db.transaction(() => {
+  const accountId = await db.transaction(async () => {
     // email_verified explicitly 0: the column default differs between fresh
     // databases (0) and ones migrated from the pre-MFA schema (1, to
     // grandfather old accounts) — new accounts must always start unverified.
-    const acct = db
+    const acct = await db
       .prepare("INSERT INTO accounts (email, password_hash, email_verified) VALUES (?, ?, 0)")
       .run(email, hashPassword(input.password));
-    const accountId = Number(acct.lastInsertRowid);
+    const accountId = acct.lastInsertRowid;
 
-    db.prepare(
-      `INSERT INTO patients (
-        account_id, first_name, middle_initial, last_name, date_of_birth, gender,
-        address1, address2, city, state, zip, phone, cell_phone, email,
-        preferred_language, allergies, medical_conditions,
-        ins_bin, ins_pcn, ins_group, ins_cardholder_id, ins_person_code, ins_relationship,
-        delivery_method, sms_opt_in, hipaa_ack_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(
-      accountId,
-      encryptPHI(input.firstName),
-      enc(input.middleInitial),
-      encryptPHI(input.lastName),
-      encryptPHI(input.dateOfBirth),
-      encryptPHI(input.gender),
-      encryptPHI(input.address1),
-      enc(input.address2),
-      encryptPHI(input.city),
-      encryptPHI(input.state),
-      encryptPHI(input.zip),
-      enc(input.phone),
-      encryptPHI(input.cellPhone),
-      encryptPHI(email),
-      input.preferredLanguage,
-      enc(input.allergies),
-      enc(input.medicalConditions),
-      enc(input.insBin),
-      enc(input.insPcn),
-      enc(input.insGroup),
-      enc(input.insCardholderId),
-      enc(input.insPersonCode),
-      input.insRelationship ?? null,
-      input.deliveryMethod,
-      input.smsOptIn ? 1 : 0,
-      new Date().toISOString()
-    );
+    await db
+      .prepare(
+        `INSERT INTO patients (
+          account_id, first_name, middle_initial, last_name, date_of_birth, gender,
+          address1, address2, city, state, zip, phone, cell_phone, email,
+          preferred_language, allergies, medical_conditions,
+          ins_bin, ins_pcn, ins_group, ins_cardholder_id, ins_person_code, ins_relationship,
+          delivery_method, sms_opt_in, hipaa_ack_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        accountId,
+        encryptPHI(input.firstName),
+        enc(input.middleInitial),
+        encryptPHI(input.lastName),
+        encryptPHI(input.dateOfBirth),
+        encryptPHI(input.gender),
+        encryptPHI(input.address1),
+        enc(input.address2),
+        encryptPHI(input.city),
+        encryptPHI(input.state),
+        encryptPHI(input.zip),
+        enc(input.phone),
+        encryptPHI(input.cellPhone),
+        encryptPHI(email),
+        input.preferredLanguage,
+        enc(input.allergies),
+        enc(input.medicalConditions),
+        enc(input.insBin),
+        enc(input.insPcn),
+        enc(input.insGroup),
+        enc(input.insCardholderId),
+        enc(input.insPersonCode),
+        input.insRelationship ?? null,
+        input.deliveryMethod,
+        input.smsOptIn ? 1 : 0,
+        new Date().toISOString()
+      );
     return accountId;
   });
 
-  const accountId = createAll();
-  audit({ actor: `account:${accountId}`, action: "auth.register", subject: `patient:account:${accountId}`, outcome: "success", ip });
+  await audit({ actor: `account:${accountId}`, action: "auth.register", subject: `patient:account:${accountId}`, outcome: "success", ip });
   return { ok: true, accountId };
 }
 
-export function loginPatient(
+export async function loginPatient(
   emailRaw: string,
   password: string,
   ip?: string
-):
+): Promise<
   | { ok: true; accountId: number; email: string; emailVerified: boolean }
-  | { ok: false; error: string; status: number } {
-  const db = getDb();
+  | { ok: false; error: string; status: number }
+> {
+  const db = await getDb();
   const email = emailRaw.trim().toLowerCase();
   const generic = { ok: false as const, error: "Invalid email or password.", status: 401 };
 
-  const acct = db
+  const acct = await db
     .prepare("SELECT id, password_hash, failed_logins, locked_until, email_verified FROM accounts WHERE email = ?")
-    .get(email) as
-    | { id: number; password_hash: string; failed_logins: number; locked_until: string | null; email_verified: number }
-    | undefined;
+    .get<{ id: number; password_hash: string; failed_logins: number; locked_until: string | null; email_verified: number }>(email);
 
   if (!acct) {
-    audit({ actor: "anonymous", action: "auth.login", outcome: "failure", detail: "unknown_email", ip });
+    await audit({ actor: "anonymous", action: "auth.login", outcome: "failure", detail: "unknown_email", ip });
     return generic;
   }
 
   if (acct.locked_until && new Date(acct.locked_until) > new Date()) {
-    audit({ actor: `account:${acct.id}`, action: "auth.login", outcome: "failure", detail: "locked", ip });
+    await audit({ actor: `account:${acct.id}`, action: "auth.login", outcome: "failure", detail: "locked", ip });
     return { ok: false, error: "Too many failed attempts. Please try again in a few minutes.", status: 429 };
   }
 
   if (!verifyPassword(password, acct.password_hash)) {
     const failed = acct.failed_logins + 1;
     const lock = failed >= MAX_FAILED_LOGINS ? new Date(Date.now() + LOCKOUT_MS).toISOString() : null;
-    db.prepare("UPDATE accounts SET failed_logins = ?, locked_until = ? WHERE id = ?").run(
+    await db.prepare("UPDATE accounts SET failed_logins = ?, locked_until = ? WHERE id = ?").run(
       lock ? 0 : failed,
       lock,
       acct.id
     );
-    audit({ actor: `account:${acct.id}`, action: "auth.login", outcome: "failure", detail: lock ? "bad_password_locked" : "bad_password", ip });
+    await audit({ actor: `account:${acct.id}`, action: "auth.login", outcome: "failure", detail: lock ? "bad_password_locked" : "bad_password", ip });
     return generic;
   }
 
-  db.prepare("UPDATE accounts SET failed_logins = 0, locked_until = NULL WHERE id = ?").run(acct.id);
-  audit({ actor: `account:${acct.id}`, action: "auth.login", outcome: "success", detail: "password_ok_pending_mfa", ip });
+  await db.prepare("UPDATE accounts SET failed_logins = 0, locked_until = NULL WHERE id = ?").run(acct.id);
+  await audit({ actor: `account:${acct.id}`, action: "auth.login", outcome: "success", detail: "password_ok_pending_mfa", ip });
   return { ok: true, accountId: acct.id, email, emailVerified: acct.email_verified === 1 };
 }
 
@@ -196,16 +196,18 @@ export type MfaPurpose = "email_verify" | "login_mfa";
  * code + pending token, sets the pending cookie, emails the code.
  */
 export async function startMfaChallenge(accountId: number, email: string, purpose: MfaPurpose): Promise<void> {
-  const db = getDb();
+  const db = await getDb();
   const token = generateSessionToken();
   const code = generateOtpCode();
   const expires = new Date(Date.now() + MFA_TTL_MS);
 
   // One live challenge per account/purpose — a resend invalidates the old code.
-  db.prepare("DELETE FROM mfa_pending WHERE account_id = ? AND purpose = ?").run(accountId, purpose);
-  db.prepare(
-    "INSERT INTO mfa_pending (token_hash, account_id, purpose, code_hash, expires_at) VALUES (?, ?, ?, ?, ?)"
-  ).run(hashSessionToken(token), accountId, purpose, hashSessionToken(code), expires.toISOString());
+  await db.prepare("DELETE FROM mfa_pending WHERE account_id = ? AND purpose = ?").run(accountId, purpose);
+  await db
+    .prepare(
+      "INSERT INTO mfa_pending (token_hash, account_id, purpose, code_hash, expires_at) VALUES (?, ?, ?, ?, ?)"
+    )
+    .run(hashSessionToken(token), accountId, purpose, hashSessionToken(code), expires.toISOString());
 
   (await cookies()).set(MFA_COOKIE, token, {
     httpOnly: true,
@@ -216,7 +218,7 @@ export async function startMfaChallenge(accountId: number, email: string, purpos
   });
 
   await sendOtpEmail(email, code, purpose);
-  audit({ actor: `account:${accountId}`, action: `auth.mfa.${purpose}.sent`, outcome: "success" });
+  await audit({ actor: `account:${accountId}`, action: `auth.mfa.${purpose}.sent`, outcome: "success" });
 }
 
 /** The account+purpose behind the browser's pending cookie, if still valid. */
@@ -225,14 +227,15 @@ async function getPendingChallenge(): Promise<
 > {
   const token = (await cookies()).get(MFA_COOKIE)?.value;
   if (!token) return null;
-  const row = getDb()
+  const db = await getDb();
+  const row = await db
     .prepare("SELECT id, account_id, purpose, attempts, code_hash, expires_at FROM mfa_pending WHERE token_hash = ?")
-    .get(hashSessionToken(token)) as
-    | { id: number; account_id: number; purpose: MfaPurpose; attempts: number; code_hash: string; expires_at: string }
-    | undefined;
+    .get<{ id: number; account_id: number; purpose: MfaPurpose; attempts: number; code_hash: string; expires_at: string }>(
+      hashSessionToken(token)
+    );
   if (!row) return null;
   if (new Date(row.expires_at) <= new Date()) {
-    getDb().prepare("DELETE FROM mfa_pending WHERE id = ?").run(row.id);
+    await db.prepare("DELETE FROM mfa_pending WHERE id = ?").run(row.id);
     return null;
   }
   return { id: row.id, accountId: row.account_id, purpose: row.purpose, attempts: row.attempts, codeHash: row.code_hash };
@@ -247,7 +250,7 @@ export async function completeMfaChallenge(
   code: string,
   ip?: string
 ): Promise<{ ok: true; purpose: MfaPurpose } | { ok: false; error: string; status: number }> {
-  const db = getDb();
+  const db = await getDb();
   const pending = await getPendingChallenge();
   if (!pending) {
     return { ok: false, error: "Your code has expired. Please sign in again to get a new one.", status: 401 };
@@ -256,20 +259,20 @@ export async function completeMfaChallenge(
   if (hashSessionToken(code.trim()) !== pending.codeHash) {
     const attempts = pending.attempts + 1;
     if (attempts >= MAX_CODE_ATTEMPTS) {
-      db.prepare("DELETE FROM mfa_pending WHERE id = ?").run(pending.id);
-      audit({ actor: `account:${pending.accountId}`, action: `auth.mfa.${pending.purpose}.verify`, outcome: "failure", detail: "too_many_attempts", ip });
+      await db.prepare("DELETE FROM mfa_pending WHERE id = ?").run(pending.id);
+      await audit({ actor: `account:${pending.accountId}`, action: `auth.mfa.${pending.purpose}.verify`, outcome: "failure", detail: "too_many_attempts", ip });
       return { ok: false, error: "Too many incorrect codes. Please sign in again to get a new one.", status: 429 };
     }
-    db.prepare("UPDATE mfa_pending SET attempts = ? WHERE id = ?").run(attempts, pending.id);
-    audit({ actor: `account:${pending.accountId}`, action: `auth.mfa.${pending.purpose}.verify`, outcome: "failure", detail: "bad_code", ip });
+    await db.prepare("UPDATE mfa_pending SET attempts = ? WHERE id = ?").run(attempts, pending.id);
+    await audit({ actor: `account:${pending.accountId}`, action: `auth.mfa.${pending.purpose}.verify`, outcome: "failure", detail: "bad_code", ip });
     return { ok: false, error: "That code isn't right. Please check your email and try again.", status: 400 };
   }
 
-  db.prepare("DELETE FROM mfa_pending WHERE id = ?").run(pending.id);
+  await db.prepare("DELETE FROM mfa_pending WHERE id = ?").run(pending.id);
   if (pending.purpose === "email_verify") {
-    db.prepare("UPDATE accounts SET email_verified = 1 WHERE id = ?").run(pending.accountId);
+    await db.prepare("UPDATE accounts SET email_verified = 1 WHERE id = ?").run(pending.accountId);
   }
-  audit({ actor: `account:${pending.accountId}`, action: `auth.mfa.${pending.purpose}.verify`, outcome: "success", ip });
+  await audit({ actor: `account:${pending.accountId}`, action: `auth.mfa.${pending.purpose}.verify`, outcome: "success", ip });
 
   (await cookies()).delete(MFA_COOKIE);
   await createSession(pending.accountId);
@@ -280,18 +283,18 @@ export async function completeMfaChallenge(
 export async function resendMfaCode(): Promise<{ ok: boolean }> {
   const pending = await getPendingChallenge();
   if (!pending) return { ok: false };
-  const acct = getDb().prepare("SELECT email FROM accounts WHERE id = ?").get(pending.accountId) as
-    | { email: string }
-    | undefined;
+  const db = await getDb();
+  const acct = await db.prepare("SELECT email FROM accounts WHERE id = ?").get<{ email: string }>(pending.accountId);
   if (!acct) return { ok: false };
   await startMfaChallenge(pending.accountId, acct.email, pending.purpose);
   return { ok: true };
 }
 
 export async function createSession(accountId: number): Promise<void> {
+  const db = await getDb();
   const token = generateSessionToken();
   const expires = new Date(Date.now() + SESSION_TTL_MS);
-  getDb()
+  await db
     .prepare("INSERT INTO sessions (token_hash, account_id, expires_at) VALUES (?, ?, ?)")
     .run(hashSessionToken(token), accountId, expires.toISOString());
 
@@ -307,12 +310,13 @@ export async function createSession(accountId: number): Promise<void> {
 export async function getSessionAccountId(): Promise<number | null> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return null;
-  const row = getDb()
+  const db = await getDb();
+  const row = await db
     .prepare("SELECT account_id, expires_at FROM sessions WHERE token_hash = ?")
-    .get(hashSessionToken(token)) as { account_id: number; expires_at: string } | undefined;
+    .get<{ account_id: number; expires_at: string }>(hashSessionToken(token));
   if (!row) return null;
   if (new Date(row.expires_at) <= new Date()) {
-    getDb().prepare("DELETE FROM sessions WHERE token_hash = ?").run(hashSessionToken(token));
+    await db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(hashSessionToken(token));
     return null;
   }
   return row.account_id;
@@ -322,24 +326,26 @@ export async function destroySession(): Promise<void> {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
   if (token) {
-    getDb().prepare("DELETE FROM sessions WHERE token_hash = ?").run(hashSessionToken(token));
+    const db = await getDb();
+    await db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(hashSessionToken(token));
   }
   store.delete(SESSION_COOKIE);
 }
 
 /** Minimal profile for the signed-in portal view. Access is audited. */
-export function getPatientProfile(accountId: number, ip?: string): PatientProfile | null {
-  const row = getDb()
+export async function getPatientProfile(accountId: number, ip?: string): Promise<PatientProfile | null> {
+  const db = await getDb();
+  const row = await db
     .prepare(
       `SELECT patient_id, first_name, last_name, email, cell_phone, delivery_method, preferred_language
        FROM patients WHERE account_id = ?`
     )
-    .get(accountId) as
-    | { patient_id: number; first_name: string; last_name: string; email: string; cell_phone: string; delivery_method: string; preferred_language: string }
-    | undefined;
+    .get<{ patient_id: number; first_name: string; last_name: string; email: string; cell_phone: string; delivery_method: string; preferred_language: string }>(
+      accountId
+    );
   if (!row) return null;
 
-  audit({ actor: `account:${accountId}`, action: "patient.read", subject: `patient:${row.patient_id}`, outcome: "success", ip });
+  await audit({ actor: `account:${accountId}`, action: "patient.read", subject: `patient:${row.patient_id}`, outcome: "success", ip });
   return {
     patientId: row.patient_id,
     firstName: decryptPHI(row.first_name),
