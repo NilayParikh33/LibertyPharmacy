@@ -217,8 +217,21 @@ export async function startMfaChallenge(accountId: number, email: string, purpos
     expires,
   });
 
-  await sendOtpEmail(email, code, purpose);
-  await audit({ actor: `account:${accountId}`, action: `auth.mfa.${purpose}.sent`, outcome: "success" });
+  // The pending challenge (DB row + cookie) is already committed above, so a
+  // transport failure here must not crash an otherwise-successful
+  // register/login request — the user can still recover via Resend. Log it
+  // so a persistently broken mail transport is visible in the audit trail.
+  try {
+    await sendOtpEmail(email, code, purpose);
+    await audit({ actor: `account:${accountId}`, action: `auth.mfa.${purpose}.sent`, outcome: "success" });
+  } catch (err) {
+    await audit({
+      actor: `account:${accountId}`,
+      action: `auth.mfa.${purpose}.sent`,
+      outcome: "failure",
+      detail: `mail_send_failed: ${err instanceof Error ? err.message : String(err)}`,
+    });
+  }
 }
 
 /** The account+purpose behind the browser's pending cookie, if still valid. */
