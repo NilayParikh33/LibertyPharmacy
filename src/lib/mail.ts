@@ -70,3 +70,40 @@ export async function sendOtpEmail(
 
   throw new Error("Email transport not configured — cannot send verification codes in production.");
 }
+
+/**
+ * Password reset link. The URL carries a single-use token, so the message is
+ * sensitive: it is sent only to the address already on the account, and the
+ * link expires in 30 minutes.
+ */
+export async function sendPasswordResetEmail(to: string, resetUrl: string): Promise<void> {
+  const subject = "Reset your Liberty Pharmacy password";
+  const intro = "We received a request to reset your Liberty Pharmacy password.";
+
+  if (transporter) {
+    await transporter.sendMail({
+      from: `"Liberty Pharmacy" <${gmailUser}>`,
+      to,
+      subject,
+      text: `${intro}\n\nOpen this link to choose a new password:\n${resetUrl}\n\nThis link expires in 30 minutes and can only be used once. If you didn't request it, you can ignore this email — your password will not change.`,
+      html: `
+        <div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px">
+          <h2 style="color:#1b2a47;margin:0 0 16px">Liberty Pharmacy</h2>
+          <p style="color:#334155;font-size:15px;line-height:1.6">${intro}</p>
+          <p style="text-align:center;margin:28px 0">
+            <a href="${resetUrl}" style="display:inline-block;background:#2f5592;color:#ffffff;text-decoration:none;font-weight:bold;font-size:15px;padding:14px 28px;border-radius:8px">Choose a new password</a>
+          </p>
+          <p style="color:#64748b;font-size:13px;line-height:1.6">This link expires in 30 minutes and can only be used once. If you didn't request it, you can safely ignore this email — your password will not change.</p>
+          <p style="color:#94a3b8;font-size:12px;line-height:1.6;word-break:break-all">If the button doesn't work, paste this into your browser:<br>${resetUrl}</p>
+        </div>`,
+    });
+    return;
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`\n[mail:dev] To: ${to}\n[mail:dev] Subject: ${subject}\n[mail:dev] Reset link: ${resetUrl}\n`);
+    return;
+  }
+
+  throw new Error("Email transport not configured — cannot send password reset emails in production.");
+}

@@ -56,9 +56,14 @@ export default function LoginPage() {
               <input id="email" name="email" type="email" autoComplete="email" required className="input-field" />
             </div>
             <div>
-              <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-slate-700">
-                Password
-              </label>
+              <div className="mb-1.5 flex items-baseline justify-between gap-3">
+                <label htmlFor="password" className="block text-sm font-medium text-slate-700">
+                  Password
+                </label>
+                <Link href="/portal/forgot" className="text-sm font-medium text-navy-700 underline">
+                  Forgot password?
+                </Link>
+              </div>
               <input
                 id="password"
                 name="password"
