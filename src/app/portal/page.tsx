@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import PageHero from "@/components/PageHero";
 import LogoutButton from "@/components/LogoutButton";
-import { site } from "@/lib/site";
+import { getSiteSettings } from "@/lib/site";
 import { getSessionAccountId, getPatientProfile } from "@/lib/auth";
 
 export const metadata: Metadata = {
@@ -29,6 +29,7 @@ export default async function PortalPage({
   const { registered } = await searchParams;
   const accountId = await getSessionAccountId();
   const profile = accountId ? await getPatientProfile(accountId) : null;
+  const site = await getSiteSettings();
 
   if (profile) {
     const comingSoon = [

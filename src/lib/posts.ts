@@ -1,8 +1,12 @@
+import { getDb } from "./db";
+
 /**
- * Blog content — static for now. Swap this module for a CMS or MDX
- * pipeline later without touching the page components.
+ * Blog content — admin-managed, stored in the `posts` table (see
+ * src/lib/db.ts). Swap this module for a CMS/MDX pipeline later without
+ * touching the page components, which only use the functions below.
  */
 export type Post = {
+  id: number;
   slug: string;
   title: string;
   excerpt: string;
@@ -12,59 +16,80 @@ export type Post = {
   sections: Array<{ heading: string; body: string }>;
 };
 
-export const posts: Post[] = [
-  {
-    slug: "embracing-wellness",
-    title: "Embracing Wellness: Your Guide to a Healthier Lifestyle",
-    excerpt:
-      "Your health and well-being are our top priorities. Explore key insights and everyday habits to unlock a healthier you.",
-    author: "Liberty Pharmacy Team",
-    date: "2026-07-15",
-    readMinutes: 3,
-    sections: [
-      {
-        heading: "The Liberty Commitment",
-        body: "At Liberty Pharmacy, we go beyond being just a pharmacy — we are your partners in wellness. Our commitment extends to personalized care and support from our experienced team of pharmacists, guiding you on your unique path to better health.",
-      },
-      {
-        heading: "Convenience Without Compromise",
-        body: "Managing your health should be effortless. Refills ready in minutes, free local delivery, and medication synchronization mean fewer trips and fewer missed doses — with our online patient portal on the way to make it even easier.",
-      },
-      {
-        heading: "Wellness Essentials In Store",
-        body: "From vitamins and supplements to first aid and everyday self-care products, our shelves are curated to support your whole-health journey — and our pharmacists can help you choose what actually works.",
-      },
-      {
-        heading: "Your Questions, Answered",
-        body: "Have a question about a medication or an interaction? Our team offers private one-on-one consultations. No hold music, no rushed answers — just real guidance from pharmacists who know you.",
-      },
-    ],
-  },
-  {
-    slug: "vaccination-season-checklist",
-    title: "Your Vaccination Season Checklist",
-    excerpt:
-      "Flu season is around the corner. Here's a simple checklist to make sure you and your family are protected this year.",
-    author: "Liberty Pharmacy Team",
-    date: "2026-06-20",
-    readMinutes: 2,
-    sections: [
-      {
-        heading: "Why Timing Matters",
-        body: "Immunity takes about two weeks to build after a vaccine. Getting protected before peak season means you're covered when it counts most.",
-      },
-      {
-        heading: "What We Offer",
-        body: "Liberty Pharmacy administers flu, COVID-19, shingles, pneumonia, and other routine immunizations. Walk-ins are welcome, and most insurance plans cover vaccines at no cost to you.",
-      },
-      {
-        heading: "Bring the Whole Family",
-        body: "Ask our pharmacists which vaccines are right for each member of your household — we'll help you build a simple schedule so nobody misses a dose.",
-      },
-    ],
-  },
-];
+export interface PostInput {
+  slug: string;
+  title: string;
+  excerpt: string;
+  author: string;
+  date: string;
+  readMinutes: number;
+  sections: Array<{ heading: string; body: string }>;
+}
 
-export function getPost(slug: string): Post | undefined {
-  return posts.find((p) => p.slug === slug);
+interface PostRow {
+  id: number;
+  slug: string;
+  title: string;
+  excerpt: string;
+  author: string;
+  date: string;
+  read_minutes: number;
+  sections_json: string;
+}
+
+function fromRow(row: PostRow): Post {
+  return {
+    id: row.id,
+    slug: row.slug,
+    title: row.title,
+    excerpt: row.excerpt,
+    author: row.author,
+    date: row.date,
+    readMinutes: row.read_minutes,
+    sections: JSON.parse(row.sections_json),
+  };
+}
+
+export async function getPosts(): Promise<Post[]> {
+  const db = await getDb();
+  const rows = await db.prepare("SELECT * FROM posts ORDER BY date DESC, id DESC").all<PostRow>();
+  return rows.map(fromRow);
+}
+
+export async function getPost(slug: string): Promise<Post | undefined> {
+  const db = await getDb();
+  const row = await db.prepare("SELECT * FROM posts WHERE slug = ?").get<PostRow>(slug);
+  return row ? fromRow(row) : undefined;
+}
+
+export async function getPostById(id: number): Promise<Post | undefined> {
+  const db = await getDb();
+  const row = await db.prepare("SELECT * FROM posts WHERE id = ?").get<PostRow>(id);
+  return row ? fromRow(row) : undefined;
+}
+
+export async function createPost(input: PostInput): Promise<number> {
+  const db = await getDb();
+  const result = await db
+    .prepare(
+      `INSERT INTO posts (slug, title, excerpt, author, date, read_minutes, sections_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(input.slug, input.title, input.excerpt, input.author, input.date, input.readMinutes, JSON.stringify(input.sections));
+  return result.lastInsertRowid;
+}
+
+export async function updatePost(id: number, input: PostInput): Promise<void> {
+  const db = await getDb();
+  await db
+    .prepare(
+      `UPDATE posts SET slug = ?, title = ?, excerpt = ?, author = ?, date = ?, read_minutes = ?, sections_json = ?,
+       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
+    )
+    .run(input.slug, input.title, input.excerpt, input.author, input.date, input.readMinutes, JSON.stringify(input.sections), id);
+}
+
+export async function deletePost(id: number): Promise<void> {
+  const db = await getDb();
+  await db.prepare("DELETE FROM posts WHERE id = ?").run(id);
 }

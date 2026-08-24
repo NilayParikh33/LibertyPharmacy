@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import PageHero from "@/components/PageHero";
-import { site } from "@/lib/site";
+import { getSiteSettings } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "For Providers",
@@ -36,7 +36,8 @@ const programs = [
   },
 ];
 
-export default function ProvidersPage() {
+export default async function ProvidersPage() {
+  const site = await getSiteSettings();
   return (
     <>
       <PageHero

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { site } from "@/lib/site";
+import { getSiteSettings } from "@/lib/site";
 import { getSessionAccountId } from "@/lib/auth";
 
 const stats = [
@@ -29,13 +29,12 @@ const highlights = [
 const services = [
   { title: "Prescription Refills", body: "Fast, accurate refills with friendly reminders when you're due." },
   { title: "Compounding", body: "Custom-compounded medications tailored to your exact needs." },
-  { title: "Vaccinations", body: "Flu, COVID-19, shingles, and routine immunizations — walk-ins welcome." },
-  { title: "1:1 Consultations", body: "Private medication reviews and health consultations with our pharmacists." },
   { title: "Medical Supplies", body: "Medical equipment, first aid, vitamins, and everyday health essentials." },
   { title: "Medication Sync", body: "Align all your refills to a single monthly pickup — one trip, everything ready." },
 ];
 
 export default async function HomePage() {
+  const site = await getSiteSettings();
   const signedIn = (await getSessionAccountId()) !== null;
   return (
     <>

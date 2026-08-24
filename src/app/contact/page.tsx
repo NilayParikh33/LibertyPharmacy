@@ -1,14 +1,15 @@
 import type { Metadata } from "next";
 import PageHero from "@/components/PageHero";
 import ContactForm from "@/components/ContactForm";
-import { site } from "@/lib/site";
+import { getSiteSettings } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Contact Us",
   description: "Reach Liberty Pharmacy in Austin, TX — call, visit, or send us a general inquiry.",
 };
 
-export default function ContactPage() {
+export default async function ContactPage() {
+  const site = await getSiteSettings();
   return (
     <>
       <PageHero

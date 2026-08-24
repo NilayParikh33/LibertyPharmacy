@@ -4,16 +4,16 @@ import Link from "next/link";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 import Logo from "./Logo";
-import { nav, site } from "@/lib/site";
+import { nav } from "@/lib/nav";
 
-export default function Header() {
+export default function Header({ siteName }: { siteName: string }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
       <div className="container-site flex h-16 items-center justify-between gap-4">
-        <Link href="/" className="flex items-center gap-2.5" aria-label={`${site.name} home`}>
+        <Link href="/" className="flex items-center gap-2.5" aria-label={`${siteName} home`}>
           <Logo />
           <span className="text-lg font-bold tracking-tight text-navy-900">
             Liberty <span className="text-liberty-red">Pharmacy</span>

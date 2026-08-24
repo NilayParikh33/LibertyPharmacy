@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Logo from "./Logo";
-import { site } from "@/lib/site";
+import type { SiteSettings } from "@/lib/site";
 
 const gettingStarted = [
   { label: "Home", href: "/" },
@@ -21,7 +21,7 @@ const legal = [
   { label: "HIPAA Notice of Privacy Practices", href: "/hipaa-notice" },
 ];
 
-export default function Footer() {
+export default function Footer({ settings: site }: { settings: SiteSettings }) {
   return (
     <footer className="border-t border-slate-200 bg-navy-950 text-slate-300">
       <div className="container-site grid gap-10 py-14 sm:grid-cols-2 lg:grid-cols-4">

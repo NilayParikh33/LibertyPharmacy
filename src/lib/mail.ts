@@ -70,3 +70,52 @@ export async function sendOtpEmail(
 
   throw new Error("Email transport not configured — cannot send verification codes in production.");
 }
+
+export interface ContactMessageInput {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  subject: string;
+  message: string;
+}
+
+/**
+ * Forwards a general-inquiry contact-form submission to the pharmacy inbox.
+ * Temporary delivery channel: same non-BAA Gmail transport as OTP mail, which
+ * is acceptable here because src/app/api/contact/route.ts already screens out
+ * anything that looks like PHI before this is ever called.
+ */
+export async function sendContactEmail(data: ContactMessageInput): Promise<void> {
+  const to = process.env.CONTACT_FORWARD_EMAIL || gmailUser;
+  const subject = `Contact form: ${data.subject} — ${data.firstName} ${data.lastName}`;
+  const text = `New contact form submission\n\nName: ${data.firstName} ${data.lastName}\nEmail: ${data.email}\nPhone: ${data.phone || "(not provided)"}\nSubject: ${data.subject}\n\nMessage:\n${data.message}`;
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;padding:24px">
+      <h2 style="color:#1b2a47;margin:0 0 16px">New contact form submission</h2>
+      <p style="color:#334155;font-size:14px;margin:4px 0"><strong>Name:</strong> ${data.firstName} ${data.lastName}</p>
+      <p style="color:#334155;font-size:14px;margin:4px 0"><strong>Email:</strong> ${data.email}</p>
+      <p style="color:#334155;font-size:14px;margin:4px 0"><strong>Phone:</strong> ${data.phone || "(not provided)"}</p>
+      <p style="color:#334155;font-size:14px;margin:4px 0"><strong>Subject:</strong> ${data.subject}</p>
+      <p style="color:#334155;font-size:14px;line-height:1.6;white-space:pre-wrap;margin-top:16px;background:#f1f5f9;border-radius:8px;padding:12px">${data.message}</p>
+    </div>`;
+
+  if (transporter && to) {
+    await transporter.sendMail({
+      from: `"Liberty Pharmacy Website" <${gmailUser}>`,
+      to,
+      replyTo: data.email,
+      subject,
+      text,
+      html,
+    });
+    return;
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`\n[mail:dev] Contact form submission (no transport configured):\n${text}\n`);
+    return;
+  }
+
+  throw new Error("Email transport not configured — cannot forward contact form submissions in production.");
+}

@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import PageHero from "@/components/PageHero";
-import { site } from "@/lib/site";
+import { getSiteSettings } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Locations",
   description: "Find Liberty Pharmacy at 8650 Spicewood Springs Rd #106, Austin, TX 78759.",
 };
 
-export default function LocationsPage() {
+export default async function LocationsPage() {
+  const site = await getSiteSettings();
   return (
     <>
       <PageHero

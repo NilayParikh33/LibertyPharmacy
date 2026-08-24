@@ -5,7 +5,7 @@ import PageHero from "@/components/PageHero";
 export const metadata: Metadata = {
   title: "Our Services",
   description:
-    "Prescription refills, compounding, vaccinations, medication synchronization, and more at Liberty Pharmacy in Austin, TX.",
+    "Prescription refills, compounding, medication synchronization, and more at Liberty Pharmacy in Austin, TX.",
 };
 
 const services = [
@@ -20,19 +20,9 @@ const services = [
     icon: "⚗️",
   },
   {
-    title: "Vaccinations",
-    body: "Flu, COVID-19, shingles, pneumonia, and routine immunizations administered by certified pharmacists. Walk-ins welcome.",
-    icon: "💉",
-  },
-  {
     title: "Medication Synchronization",
     body: "We align all of your refills to a single monthly pickup date — one trip, everything ready, nothing missed.",
     icon: "📅",
-  },
-  {
-    title: "1:1 Pharmacist Consultations",
-    body: "Private medication reviews, interaction checks, and answers to your health questions — in person or by phone.",
-    icon: "🗣",
   },
   {
     title: "Long-Term Care Support",

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import PageHero from "@/components/PageHero";
-import { site } from "@/lib/site";
+import { getSiteSettings } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "HIPAA Notice of Privacy Practices",
@@ -16,7 +16,8 @@ export const metadata: Metadata = {
  * Privacy Officer / legal counsel, dated, and kept consistent with the
  * printed notice posted in the store.
  */
-export default function HipaaNoticePage() {
+export default async function HipaaNoticePage() {
+  const site = await getSiteSettings();
   return (
     <>
       <PageHero

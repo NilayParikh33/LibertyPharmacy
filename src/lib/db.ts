@@ -176,6 +176,55 @@ async function init(): Promise<AppDb> {
       at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
     CREATE INDEX IF NOT EXISTS idx_audit_at ON audit_log(at);
+
+    -- General-inquiry contact form submissions. No [enc] columns: the API
+    -- route screens out anything that looks like PHI before a row is ever
+    -- written here (see src/app/api/contact/route.ts).
+    CREATE TABLE IF NOT EXISTS contact_messages (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      first_name  TEXT NOT NULL,
+      last_name   TEXT NOT NULL,
+      email       TEXT NOT NULL,
+      phone       TEXT,
+      subject     TEXT NOT NULL,
+      message     TEXT NOT NULL,
+      status      TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','read','replied')),
+      created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_contact_messages_created ON contact_messages(created_at);
+
+    -- Blog content, admin-managed. sections_json holds Post["sections"].
+    CREATE TABLE IF NOT EXISTS posts (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug          TEXT NOT NULL UNIQUE,
+      title         TEXT NOT NULL,
+      excerpt       TEXT NOT NULL,
+      author        TEXT NOT NULL,
+      date          TEXT NOT NULL,
+      read_minutes  INTEGER NOT NULL,
+      sections_json TEXT NOT NULL,
+      created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+
+    -- Single-row (id=1) site content, admin-managed. See src/lib/site.ts.
+    CREATE TABLE IF NOT EXISTS site_settings (
+      id             INTEGER PRIMARY KEY CHECK (id = 1),
+      name           TEXT NOT NULL,
+      tagline        TEXT NOT NULL,
+      phone          TEXT NOT NULL,
+      phone_href     TEXT NOT NULL,
+      fax            TEXT NOT NULL,
+      email          TEXT NOT NULL,
+      address_line1  TEXT NOT NULL,
+      address_city   TEXT NOT NULL,
+      address_state  TEXT NOT NULL,
+      address_zip    TEXT NOT NULL,
+      address_county TEXT NOT NULL,
+      hours_json     TEXT NOT NULL,
+      maps_url       TEXT NOT NULL,
+      updated_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
   `);
 
   // Migration for databases created before email verification existed.
@@ -184,6 +233,71 @@ async function init(): Promise<AppDb> {
     // Pre-existing accounts were created without verification; grandfather them
     // in as verified rather than locking their owners out.
     await db.exec("ALTER TABLE accounts ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 1");
+  }
+
+  // One-time seed: preserves the content that used to live hardcoded in
+  // src/lib/posts.ts and src/lib/site.ts so the admin panel has a starting
+  // point instead of an empty blog / blank site info.
+  const postCount = await db.prepare("SELECT COUNT(*) AS n FROM posts").get<{ n: number }>();
+  if (postCount?.n === 0) {
+    await db
+      .prepare(
+        `INSERT INTO posts (slug, title, excerpt, author, date, read_minutes, sections_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        "embracing-wellness",
+        "Embracing Wellness: Your Guide to a Healthier Lifestyle",
+        "Your health and well-being are our top priorities. Explore key insights and everyday habits to unlock a healthier you.",
+        "Liberty Pharmacy Team",
+        "2026-07-15",
+        3,
+        JSON.stringify([
+          {
+            heading: "The Liberty Commitment",
+            body: "At Liberty Pharmacy, we go beyond being just a pharmacy — we are your partners in wellness. Our commitment extends to personalized care and support from our experienced team of pharmacists, guiding you on your unique path to better health.",
+          },
+          {
+            heading: "Convenience Without Compromise",
+            body: "Managing your health should be effortless. Refills ready in minutes, free local delivery, and medication synchronization mean fewer trips and fewer missed doses — with our online patient portal on the way to make it even easier.",
+          },
+          {
+            heading: "Wellness Essentials In Store",
+            body: "From vitamins and supplements to first aid and everyday self-care products, our shelves are curated to support your whole-health journey — and our pharmacists can help you choose what actually works.",
+          },
+        ])
+      );
+  }
+
+  const settingsRow = await db.prepare("SELECT id FROM site_settings WHERE id = 1").get();
+  if (!settingsRow) {
+    await db
+      .prepare(
+        `INSERT INTO site_settings (
+          id, name, tagline, phone, phone_href, fax, email,
+          address_line1, address_city, address_state, address_zip, address_county,
+          hours_json, maps_url
+        ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        "Liberty Pharmacy",
+        "Your local independent pharmacy in Austin, Texas",
+        "(512) 249-7500",
+        "tel:+15122497500",
+        "(512) 249-7501",
+        "info@libertypharmacyatx.com",
+        "8650 Spicewood Springs Rd #106",
+        "Austin",
+        "TX",
+        "78759",
+        "Travis",
+        JSON.stringify([
+          { days: "Mon – Fri", hours: "9:00 AM – 6:00 PM" },
+          { days: "Saturday", hours: "Closed" },
+          { days: "Sunday", hours: "Closed" },
+        ]),
+        "https://www.google.com/maps?q=8650+Spicewood+Springs+Rd+%23106+Austin+TX+78759"
+      );
   }
 
   return db;

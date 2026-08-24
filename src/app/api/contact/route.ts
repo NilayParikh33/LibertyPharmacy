@@ -1,22 +1,19 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { getDb } from "@/lib/db";
+import { sendContactEmail } from "@/lib/mail";
 
 /**
  * Contact form endpoint — HIPAA-conscious by design.
  *
- * Current behavior (pre-integration):
- *  - Validates the payload server-side.
- *  - Screens the free-text message for obvious PHI patterns and rejects
- *    submissions that appear to contain health information (defense in
- *    depth — the UI also warns users not to send PHI).
- *  - Does NOT store, log, or forward the submission anywhere. There is no
- *    database and no email provider configured, so nothing persists.
+ * Validates the payload server-side, then screens the free-text message for
+ * obvious PHI patterns and rejects submissions that appear to contain health
+ * information (defense in depth — the UI also warns users not to send PHI).
+ * Only general inquiries reach storage/delivery below.
  *
- * Before enabling delivery:
- *  1. Choose a HIPAA-eligible email/CRM provider and sign a BAA, OR keep the
- *     no-PHI policy and use any provider for general inquiries only.
- *  2. Wire the provider below where indicated. Never console.log form
- *     contents — server logs are a common accidental PHI repository.
+ * Delivery is temporary: the same non-BAA Gmail transport used for OTP mail
+ * (src/lib/mail.ts). Before real patients rely on this for anything beyond
+ * general questions, swap for a BAA-covered provider.
  */
 
 const contactSchema = z.object({
@@ -67,11 +64,23 @@ export async function POST(request: Request) {
     );
   }
 
-  // -------------------------------------------------------------------------
-  // TODO(delivery): forward parsed.data via a BAA-covered channel.
-  // Until then we intentionally do nothing with the data — no storage, no
-  // logging — so this endpoint cannot become an accidental PHI repository.
-  // -------------------------------------------------------------------------
+  const data = parsed.data;
+  const db = await getDb();
+  await db
+    .prepare(
+      `INSERT INTO contact_messages (first_name, last_name, email, phone, subject, message)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    )
+    .run(data.firstName, data.lastName, data.email, data.phone || null, data.subject, data.message);
+
+  // The submission is already durably stored above, so a transport hiccup
+  // must not fail the request — the admin panel is the reliable path either
+  // way, email is a convenience notification on top of it.
+  try {
+    await sendContactEmail(data);
+  } catch (err) {
+    console.error("contact form: email forward failed", err instanceof Error ? err.message : err);
+  }
 
   return NextResponse.json({ ok: true });
 }

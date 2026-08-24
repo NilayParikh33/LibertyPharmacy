@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import PageHero from "@/components/PageHero";
-import { site } from "@/lib/site";
+import { getSiteSettings } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Website Privacy Policy",
   description: "How the Liberty Pharmacy website handles your information.",
 };
 
-export default function PrivacyPolicyPage() {
+export default async function PrivacyPolicyPage() {
+  const site = await getSiteSettings();
   return (
     <>
       <PageHero

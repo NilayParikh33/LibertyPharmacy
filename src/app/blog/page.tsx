@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import PageHero from "@/components/PageHero";
-import { posts } from "@/lib/posts";
+import { getPosts } from "@/lib/posts";
 
 export const metadata: Metadata = {
   title: "Blog",
   description: "Health tips, pharmacy news, and wellness guidance from the Liberty Pharmacy team.",
 };
+
+export const dynamic = "force-dynamic";
 
 function formatDate(iso: string) {
   return new Date(iso + "T00:00:00").toLocaleDateString("en-US", {
@@ -16,7 +18,8 @@ function formatDate(iso: string) {
   });
 }
 
-export default function BlogIndexPage() {
+export default async function BlogIndexPage() {
+  const posts = await getPosts();
   return (
     <>
       <PageHero
