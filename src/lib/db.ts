@@ -163,6 +163,19 @@ async function init(): Promise<AppDb> {
     );
     CREATE INDEX IF NOT EXISTS idx_sessions_account ON sessions(account_id);
 
+    -- Password reset links. Only the SHA-256 of the emailed token is stored,
+    -- so a database leak cannot be used to reset anyone's password. Tokens are
+    -- single-use (used_at) and short-lived (expires_at).
+    CREATE TABLE IF NOT EXISTS password_resets (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_hash  TEXT NOT NULL UNIQUE,
+      account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+      expires_at  TEXT NOT NULL,
+      used_at     TEXT,
+      created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_resets_account ON password_resets(account_id);
+
     -- HIPAA §164.312(b) audit controls. Never store PHI values here — only
     -- identifiers, actions, and outcomes.
     CREATE TABLE IF NOT EXISTS audit_log (

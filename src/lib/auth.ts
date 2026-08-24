@@ -9,7 +9,7 @@ import {
   hashSessionToken,
   generateOtpCode,
 } from "./crypto";
-import { sendOtpEmail } from "./mail";
+import { sendOtpEmail, sendPasswordResetEmail } from "./mail";
 
 /**
  * Authentication + patient-record service.
@@ -300,6 +300,93 @@ export async function resendMfaCode(): Promise<{ ok: boolean }> {
   const acct = await db.prepare("SELECT email FROM accounts WHERE id = ?").get<{ email: string }>(pending.accountId);
   if (!acct) return { ok: false };
   await startMfaChallenge(pending.accountId, acct.email, pending.purpose);
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Password reset
+// ---------------------------------------------------------------------------
+
+const RESET_TTL_MS = 30 * 60 * 1000; // reset links live 30 minutes
+
+/**
+ * Issue a reset link for `emailRaw` if such an account exists.
+ *
+ * Always resolves the same way regardless of whether the account exists —
+ * callers must return an identical response either way so the endpoint can't
+ * be used to discover which emails are registered.
+ */
+export async function requestPasswordReset(emailRaw: string, baseUrl: string, ip?: string): Promise<void> {
+  const db = await getDb();
+  const email = emailRaw.trim().toLowerCase();
+  const acct = await db.prepare("SELECT id FROM accounts WHERE email = ?").get<{ id: number }>(email);
+
+  if (!acct) {
+    await audit({ actor: "anonymous", action: "auth.reset.request", outcome: "failure", detail: "unknown_email", ip });
+    return;
+  }
+
+  // Supersede any outstanding link for this account.
+  await db.prepare("DELETE FROM password_resets WHERE account_id = ?").run(acct.id);
+
+  const token = generateSessionToken();
+  const expires = new Date(Date.now() + RESET_TTL_MS);
+  await db
+    .prepare("INSERT INTO password_resets (token_hash, account_id, expires_at) VALUES (?, ?, ?)")
+    .run(hashSessionToken(token), acct.id, expires.toISOString());
+
+  await sendPasswordResetEmail(email, `${baseUrl}/portal/reset?token=${token}`);
+  await audit({ actor: `account:${acct.id}`, action: "auth.reset.request", outcome: "success", ip });
+}
+
+/** True when the token is a live, unused reset token (for rendering the form). */
+export async function isResetTokenValid(token: string): Promise<boolean> {
+  const db = await getDb();
+  const row = await db
+    .prepare("SELECT expires_at, used_at FROM password_resets WHERE token_hash = ?")
+    .get<{ expires_at: string; used_at: string | null }>(hashSessionToken(token));
+  return Boolean(row && !row.used_at && new Date(row.expires_at) > new Date());
+}
+
+/**
+ * Consume a reset token and set the new password.
+ *
+ * On success every existing session for that account is destroyed — a password
+ * reset is the standard remedy for a suspected account takeover, so any
+ * attacker's session must die with it. The account is also unlocked, since a
+ * legitimate owner locked out by failed guesses should regain access.
+ */
+export async function resetPassword(
+  token: string,
+  newPassword: string,
+  ip?: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const db = await getDb();
+  const tokenHash = hashSessionToken(token);
+  const row = await db
+    .prepare("SELECT id, account_id, expires_at, used_at FROM password_resets WHERE token_hash = ?")
+    .get<{ id: number; account_id: number; expires_at: string; used_at: string | null }>(tokenHash);
+
+  const invalid = {
+    ok: false as const,
+    error: "This reset link is no longer valid. Please request a new one.",
+  };
+  if (!row || row.used_at || new Date(row.expires_at) <= new Date()) {
+    await audit({ actor: "anonymous", action: "auth.reset.complete", outcome: "failure", detail: "invalid_token", ip });
+    return invalid;
+  }
+
+  await db.transaction(async () => {
+    await db
+      .prepare("UPDATE accounts SET password_hash = ?, failed_logins = 0, locked_until = NULL WHERE id = ?")
+      .run(hashPassword(newPassword), row.account_id);
+    await db
+      .prepare("UPDATE password_resets SET used_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?")
+      .run(row.id);
+    await db.prepare("DELETE FROM sessions WHERE account_id = ?").run(row.account_id);
+  });
+
+  await audit({ actor: `account:${row.account_id}`, action: "auth.reset.complete", outcome: "success", ip });
   return { ok: true };
 }
 
