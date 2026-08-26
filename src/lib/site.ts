@@ -86,7 +86,7 @@ export async function updateSiteSettings(input: SiteSettings): Promise<void> {
       `UPDATE site_settings SET
         name = ?, tagline = ?, phone = ?, phone_href = ?, fax = ?, email = ?,
         address_line1 = ?, address_city = ?, address_state = ?, address_zip = ?, address_county = ?,
-        hours_json = ?, maps_url = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+        hours_json = ?, maps_url = ?, updated_at = ?
        WHERE id = 1`
     )
     .run(
@@ -102,7 +102,8 @@ export async function updateSiteSettings(input: SiteSettings): Promise<void> {
       input.address.zip,
       input.address.county,
       JSON.stringify(input.hours),
-      input.mapsUrl
+      input.mapsUrl,
+      new Date().toISOString()
     );
   invalidateSiteSettingsCache();
 }

@@ -19,7 +19,7 @@ The portal now collects registration data (a PHI repository). Safeguards
 implemented in code:
 
 - **Field-level encryption at rest** — every PHI column in `patients` is
-  AES-256-GCM ciphertext (`src/lib/crypto.ts`); the SQLite file contains no
+  AES-256-GCM ciphertext (`src/lib/crypto.ts`); the Postgres database contains no
   plaintext PHI. Key comes from `PHI_ENCRYPTION_KEY` (env; production must use
   a managed secret store, §164.312(a)(2)(iv)).
 - **Credential separation** — login credentials (`accounts`) live apart from

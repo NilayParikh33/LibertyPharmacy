@@ -11,6 +11,9 @@
 # misc
 .DS_Store
 *.pem
+# Exception: RDS's CA bundle is a public trust-store file (no secret
+# material), committed so deploys don't need a separate fetch step.
+!certs/rds-global-bundle.pem
 
 # debug
 npm-debug.log*
@@ -27,6 +30,3 @@ npm-debug.log*
 *.tsbuildinfo
 next-env.d.ts
 .claude/settings.local.json
-
-# local patient database — never commit (contains encrypted PHI)
-/data/

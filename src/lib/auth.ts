@@ -93,7 +93,7 @@ export async function registerPatient(
     // databases (0) and ones migrated from the pre-MFA schema (1, to
     // grandfather old accounts) — new accounts must always start unverified.
     const acct = await db
-      .prepare("INSERT INTO accounts (email, password_hash, email_verified) VALUES (?, ?, 0)")
+      .prepare("INSERT INTO accounts (email, password_hash, email_verified) VALUES (?, ?, 0) RETURNING id")
       .run(email, hashPassword(input.password));
     const accountId = acct.lastInsertRowid;
 
@@ -381,8 +381,8 @@ export async function resetPassword(
       .prepare("UPDATE accounts SET password_hash = ?, failed_logins = 0, locked_until = NULL WHERE id = ?")
       .run(hashPassword(newPassword), row.account_id);
     await db
-      .prepare("UPDATE password_resets SET used_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?")
-      .run(row.id);
+      .prepare("UPDATE password_resets SET used_at = ? WHERE id = ?")
+      .run(new Date().toISOString(), row.id);
     await db.prepare("DELETE FROM sessions WHERE account_id = ?").run(row.account_id);
   });
 

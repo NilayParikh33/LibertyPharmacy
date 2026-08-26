@@ -36,12 +36,11 @@ be trustworthy with your data.
 | **TypeScript** | JavaScript with type-checking added | Catches bugs (wrong data shapes, typos) before the code ever runs |
 | **Tailwind CSS** | A CSS toolkit where you style elements with utility classes like `text-sm font-bold` directly in the markup | No separate `.css` file per component — styling lives next to the JSX |
 | **zod** | A library that validates data shapes (e.g. "is this really an email?") | Used on every API route to check what the browser sends before touching the database |
-| **better-sqlite3** | A simple, file-based SQL database | Stores accounts, patient records, sessions, and audit logs in one file (`data/liberty.db`) |
+| **pg (node-postgres)** | A driver for PostgreSQL, a full SQL database server | Stores accounts, patient records, sessions, and audit logs |
 
-You do **not** need a separate database server. SQLite is just a file on
-disk. That is intentional for a small pharmacy site — the docs explain how
-to swap it for a bigger, BAA-covered database later (see
-`HIPAA-COMPLIANCE.md`).
+The database is Postgres, reached via `DATABASE_URL` (a hosted provider —
+Neon, Supabase, RDS — with a signed BAA before any real patient data exists;
+see `HIPAA-COMPLIANCE.md`).
 
 ---
 
@@ -84,13 +83,12 @@ LibertyPharmacy/
 │   └── lib/                     ← plain TypeScript logic (no UI) — the "backend" of the app
 │       ├── site.ts              ← business info (address, phone, hours, nav links)
 │       ├── posts.ts             ← blog content (hard-coded for now)
-│       ├── db.ts                ← opens the SQLite database, defines the tables
+│       ├── db.ts                ← opens the Postgres connection pool, defines the tables
 │       ├── crypto.ts            ← encryption, password hashing, one-time-code helpers
 │       ├── auth.ts              ← registration / login / MFA / session logic
 │       ├── mail.ts              ← sends the one-time-code emails (Gmail SMTP for now)
 │       ├── request.ts           ← safely reads the caller's IP address
 │       └── drx.ts                ← placeholder for the future pharmacy-platform integration
-├── data/                        ← the SQLite database file lives here (gitignored)
 ├── .env.example                 ← template for secret configuration (copy to .env.local)
 ├── next.config.mjs              ← security headers + Content-Security-Policy
 ├── tailwind.config.ts           ← brand colors (navy, Liberty red/gold)
@@ -438,9 +436,9 @@ npm run start        # run the production build
 npm run lint          # ESLint only
 ```
 
-The SQLite database file is created automatically on first run at
-`data/liberty.db` (the folder is gitignored — it will contain encrypted PHI
-once anyone registers, so it must never be committed).
+The Postgres tables are created automatically on first run against whatever
+database `DATABASE_URL` points to (set it in `.env.local` — see
+`.env.example`).
 
 ---
 

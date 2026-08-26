@@ -1,24 +1,39 @@
-import sqlite3 from "sqlite3";
-import path from "path";
-import fs from "fs";
+import { Pool, type PoolClient, types } from "pg";
+import { AsyncLocalStorage } from "async_hooks";
+import { readFileSync } from "fs";
+
+// node-postgres returns BIGINT (e.g. COUNT(*)) as a string by default, to
+// avoid silent precision loss beyond Number.MAX_SAFE_INTEGER. Every count in
+// this app is small (messages, posts), so parse it back to a plain number —
+// matching what every `COUNT(*) AS n` call site here already expects.
+types.setTypeParser(20, (val) => parseInt(val, 10));
 
 /**
- * SQLite data layer — local development stand-in for the eventual
- * BAA-covered production database.
+ * PostgreSQL data layer — production database (previously SQLite during
+ * early prototyping; see git history for that version).
  *
- * Uses the classic `sqlite3` driver (not `better-sqlite3`): on this project's
- * dev machine, better-sqlite3's prebuilt native binary reproducibly
- * segfaults on any query — confirmed in isolation with no Next.js involved,
- * across multiple package versions, unrelated to this app's code. `sqlite3`
- * loads and runs correctly here, so the small promise-based wrapper below
- * (`prepare().get/all/run()`, `exec()`, `transaction()`) gives the rest of
- * the codebase the same shape better-sqlite3 had, just async.
+ * Connects via `DATABASE_URL` to Amazon RDS for PostgreSQL (BAA-covered
+ * account required before real patient data exists — see HIPAA-COMPLIANCE.md).
+ * The wrapper below (`prepare().get/all/run()`, `exec()`, `transaction()`)
+ * keeps the same shape the rest of the codebase already relies on; callers
+ * still use `?` placeholders, which are rewritten to Postgres's `$1, $2, ...`
+ * here.
+ *
+ * RDS connection security:
+ *  - TLS is verified against Amazon's own CA bundle (`RDS_CA_BUNDLE_PATH`),
+ *    not just "encrypted but unverified" — RDS server certs chain to Amazon's
+ *    CA, which isn't in Node's default trust store, so skipping verification
+ *    would accept any certificate a MITM presented.
+ *  - `DB_AUTH_MODE=iam` swaps the static DB password for a 15-minute IAM
+ *    auth token (via `@aws-sdk/rds-signer`), so there's no long-lived DB
+ *    credential to leak — requires IAM DB auth enabled on the instance and
+ *    an app IAM role/credentials with `rds-db:connect` on that DB user.
  *
  * HIPAA-conscious design decisions:
  *  - Credentials (accounts) are stored separately from demographics/PHI
  *    (patients). A breach of one table does not expose the other.
  *  - Every PHI column on `patients` is encrypted at rest (AES-256-GCM via
- *    src/lib/crypto.ts) — the DB file never contains plaintext PHI.
+ *    src/lib/crypto.ts) — the DB never contains plaintext PHI.
  *    Non-PHI operational columns (ids, timestamps, status) stay plaintext.
  *  - `audit_log` records every access/modification of patient data with
  *    actor, action, subject, and timestamp (HIPAA Security Rule §164.312(b)).
@@ -30,100 +45,147 @@ import fs from "fs";
  * Columns marked [enc] hold AES-256-GCM ciphertext.
  */
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const DB_PATH = path.join(DATA_DIR, "liberty.db");
+// Produces the same ISO-8601-with-milliseconds-and-Z shape the app already
+// stores/parses everywhere (kept as TEXT, not TIMESTAMPTZ, so every existing
+// `new Date(row.created_at)` call and JSON response keeps working unchanged).
+const NOW_ISO = `to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
 
 interface RunResult {
   lastInsertRowid: number;
   changes: number;
 }
 
+// Scopes a single pooled client to one transaction's async call tree, so
+// concurrent requests can't interleave BEGIN/COMMIT across each other's
+// connections the way a shared global connection would.
+const txContext = new AsyncLocalStorage<PoolClient>();
+
+function toPgParams(sql: string): string {
+  let i = 0;
+  return sql.replace(/\?/g, () => `$${++i}`);
+}
+
 /** Thin promise-based wrapper matching the small subset of the
  * prepare/get/run/all/exec/transaction shape this app relies on. */
 class AppDb {
-  constructor(private raw: sqlite3.Database) {}
+  constructor(private pool: Pool) {}
+
+  private get client(): Pool | PoolClient {
+    return txContext.getStore() ?? this.pool;
+  }
 
   exec(sql: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.raw.exec(sql, (err) => (err ? reject(err) : resolve()));
-    });
+    return this.client.query(sql).then(() => undefined);
   }
 
   prepare(sql: string) {
-    const raw = this.raw;
+    const text = toPgParams(sql);
+    const run = (params: unknown[]) => this.client.query(text, params);
     return {
-      get<T = unknown>(...params: unknown[]): Promise<T | undefined> {
-        return new Promise((resolve, reject) => {
-          raw.get(sql, params, (err, row) => (err ? reject(err) : resolve(row as T | undefined)));
-        });
+      async get<T = unknown>(...params: unknown[]): Promise<T | undefined> {
+        const { rows } = await run(params);
+        return rows[0] as T | undefined;
       },
-      all<T = unknown>(...params: unknown[]): Promise<T[]> {
-        return new Promise((resolve, reject) => {
-          raw.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows as T[])));
-        });
+      async all<T = unknown>(...params: unknown[]): Promise<T[]> {
+        const { rows } = await run(params);
+        return rows as T[];
       },
-      run(...params: unknown[]): Promise<RunResult> {
-        return new Promise((resolve, reject) => {
-          raw.run(sql, params, function (err) {
-            if (err) reject(err);
-            else resolve({ lastInsertRowid: this.lastID, changes: this.changes });
-          });
-        });
+      async run(...params: unknown[]): Promise<RunResult> {
+        const { rows, rowCount } = await run(params);
+        return { lastInsertRowid: (rows[0] as { id?: number } | undefined)?.id ?? 0, changes: rowCount ?? 0 };
       },
     };
   }
 
   async transaction<T>(fn: () => Promise<T>): Promise<T> {
-    await this.exec("BEGIN");
+    const client = await this.pool.connect();
     try {
-      const result = await fn();
-      await this.exec("COMMIT");
+      await client.query("BEGIN");
+      const result = await txContext.run(client, fn);
+      await client.query("COMMIT");
       return result;
     } catch (err) {
-      await this.exec("ROLLBACK").catch(() => {});
+      await client.query("ROLLBACK").catch(() => {});
       throw err;
+    } finally {
+      client.release();
     }
   }
 }
 
+function resolveSsl(connectionString: string): boolean | { ca: string; rejectUnauthorized: true } {
+  const isLocal = connectionString.includes("localhost") || connectionString.includes("127.0.0.1");
+  if (isLocal) return false; // local dev Postgres typically doesn't speak TLS at all
+
+  const caBundlePath = process.env.RDS_CA_BUNDLE_PATH;
+  if (!caBundlePath) {
+    throw new Error(
+      "RDS_CA_BUNDLE_PATH is not set — download Amazon's RDS CA bundle and point this at it " +
+        "(see .env.example) before connecting to a non-local database."
+    );
+  }
+  return { ca: readFileSync(caBundlePath, "utf8"), rejectUnauthorized: true };
+}
+
+/** IAM auth token as the DB password: minted fresh (15 min TTL) each time a
+ * new physical connection is opened by the pool, via the app's own AWS
+ * credentials (IAM role in AWS, or an OIDC-federated role elsewhere). */
+function iamPasswordProvider(connectionString: string): () => Promise<string> {
+  const { hostname, port, username } = new URL(connectionString);
+  return async () => {
+    const { Signer } = await import("@aws-sdk/rds-signer");
+    const signer = new Signer({
+      hostname,
+      port: Number(port || 5432),
+      username: decodeURIComponent(username),
+      region: process.env.AWS_REGION,
+    });
+    return signer.getAuthToken();
+  };
+}
+
 async function init(): Promise<AppDb> {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  const raw = await new Promise<sqlite3.Database>((resolve, reject) => {
-    const conn = new sqlite3.Database(DB_PATH, (err) => (err ? reject(err) : resolve(conn)));
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error("DATABASE_URL is not set — configure it in .env.local (see .env.example).");
+  }
+
+  const pool = new Pool({
+    connectionString,
+    ssl: resolveSsl(connectionString),
+    ...(process.env.DB_AUTH_MODE === "iam" ? { password: iamPasswordProvider(connectionString) } : {}),
   });
-  const db = new AppDb(raw);
-  await db.exec("PRAGMA journal_mode = WAL");
-  await db.exec("PRAGMA foreign_keys = ON");
+  const db = new AppDb(pool);
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS accounts (
-      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      id            SERIAL PRIMARY KEY,
       email         TEXT NOT NULL UNIQUE,        -- login identifier (lowercased)
       password_hash TEXT NOT NULL,               -- scrypt, never plaintext
       email_verified INTEGER NOT NULL DEFAULT 0, -- 0 until the emailed code is confirmed
       failed_logins INTEGER NOT NULL DEFAULT 0,
       locked_until  TEXT,                        -- ISO8601; lockout after repeated failures
-      created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-      updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      created_at    TEXT NOT NULL DEFAULT (${NOW_ISO}),
+      updated_at    TEXT NOT NULL DEFAULT (${NOW_ISO})
     );
 
     -- One-time-code challenges for email verification and login MFA.
     -- The browser holds an opaque pending token (cookie); the emailed 6-digit
     -- code is stored only as a hash. Both expire quickly.
     CREATE TABLE IF NOT EXISTS mfa_pending (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      id          SERIAL PRIMARY KEY,
       token_hash  TEXT NOT NULL UNIQUE,          -- SHA-256 of the pending cookie token
       account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
       purpose     TEXT NOT NULL CHECK (purpose IN ('email_verify','login_mfa')),
       code_hash   TEXT NOT NULL,                 -- SHA-256 of the 6-digit code
       attempts    INTEGER NOT NULL DEFAULT 0,    -- wrong-code count; challenge dies at 5
       expires_at  TEXT NOT NULL,
-      created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      created_at  TEXT NOT NULL DEFAULT (${NOW_ISO})
     );
 
     -- DRX-aligned patient record. [enc] = AES-256-GCM ciphertext at rest.
     CREATE TABLE IF NOT EXISTS patients (
-      patient_id     INTEGER PRIMARY KEY AUTOINCREMENT, -- DRX: PatientID
+      patient_id     SERIAL PRIMARY KEY, -- DRX: PatientID
       account_id     INTEGER NOT NULL UNIQUE REFERENCES accounts(id) ON DELETE CASCADE,
       first_name     TEXT NOT NULL,  -- [enc] DRX: FirstName
       middle_initial TEXT,           -- [enc] DRX: MI
@@ -150,16 +212,16 @@ async function init(): Promise<AppDb> {
       delivery_method   TEXT NOT NULL DEFAULT 'pickup', -- DRX: DeliveryMethod (pickup/delivery/mail)
       sms_opt_in     INTEGER NOT NULL DEFAULT 0,        -- DRX: SMSOptIn
       hipaa_ack_at   TEXT NOT NULL,  -- timestamp of Notice of Privacy Practices acknowledgment
-      created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-      updated_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      created_at     TEXT NOT NULL DEFAULT (${NOW_ISO}),
+      updated_at     TEXT NOT NULL DEFAULT (${NOW_ISO})
     );
 
     CREATE TABLE IF NOT EXISTS sessions (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      id          SERIAL PRIMARY KEY,
       token_hash  TEXT NOT NULL UNIQUE,          -- SHA-256 of the cookie token
       account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
       expires_at  TEXT NOT NULL,                 -- ISO8601 absolute expiry
-      created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      created_at  TEXT NOT NULL DEFAULT (${NOW_ISO})
     );
     CREATE INDEX IF NOT EXISTS idx_sessions_account ON sessions(account_id);
 
@@ -167,26 +229,26 @@ async function init(): Promise<AppDb> {
     -- so a database leak cannot be used to reset anyone's password. Tokens are
     -- single-use (used_at) and short-lived (expires_at).
     CREATE TABLE IF NOT EXISTS password_resets (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      id          SERIAL PRIMARY KEY,
       token_hash  TEXT NOT NULL UNIQUE,
       account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
       expires_at  TEXT NOT NULL,
       used_at     TEXT,
-      created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      created_at  TEXT NOT NULL DEFAULT (${NOW_ISO})
     );
     CREATE INDEX IF NOT EXISTS idx_resets_account ON password_resets(account_id);
 
     -- HIPAA §164.312(b) audit controls. Never store PHI values here — only
     -- identifiers, actions, and outcomes.
     CREATE TABLE IF NOT EXISTS audit_log (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      id          SERIAL PRIMARY KEY,
       actor       TEXT NOT NULL,                 -- account:<id> | anonymous | system
       action      TEXT NOT NULL,                 -- e.g. auth.register, auth.login.failed, patient.read
       subject     TEXT,                          -- e.g. patient:<id>
       outcome     TEXT NOT NULL,                 -- success | failure
       detail      TEXT,                          -- non-PHI context (reason codes, field names)
       ip          TEXT,
-      at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      at          TEXT NOT NULL DEFAULT (${NOW_ISO})
     );
     CREATE INDEX IF NOT EXISTS idx_audit_at ON audit_log(at);
 
@@ -194,7 +256,7 @@ async function init(): Promise<AppDb> {
     -- route screens out anything that looks like PHI before a row is ever
     -- written here (see src/app/api/contact/route.ts).
     CREATE TABLE IF NOT EXISTS contact_messages (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      id          SERIAL PRIMARY KEY,
       first_name  TEXT NOT NULL,
       last_name   TEXT NOT NULL,
       email       TEXT NOT NULL,
@@ -202,13 +264,13 @@ async function init(): Promise<AppDb> {
       subject     TEXT NOT NULL,
       message     TEXT NOT NULL,
       status      TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','read','replied')),
-      created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      created_at  TEXT NOT NULL DEFAULT (${NOW_ISO})
     );
     CREATE INDEX IF NOT EXISTS idx_contact_messages_created ON contact_messages(created_at);
 
     -- Blog content, admin-managed. sections_json holds Post["sections"].
     CREATE TABLE IF NOT EXISTS posts (
-      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      id            SERIAL PRIMARY KEY,
       slug          TEXT NOT NULL UNIQUE,
       title         TEXT NOT NULL,
       excerpt       TEXT NOT NULL,
@@ -216,8 +278,8 @@ async function init(): Promise<AppDb> {
       date          TEXT NOT NULL,
       read_minutes  INTEGER NOT NULL,
       sections_json TEXT NOT NULL,
-      created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-      updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      created_at    TEXT NOT NULL DEFAULT (${NOW_ISO}),
+      updated_at    TEXT NOT NULL DEFAULT (${NOW_ISO})
     );
 
     -- Single-row (id=1) site content, admin-managed. See src/lib/site.ts.
@@ -236,17 +298,9 @@ async function init(): Promise<AppDb> {
       address_county TEXT NOT NULL,
       hours_json     TEXT NOT NULL,
       maps_url       TEXT NOT NULL,
-      updated_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      updated_at     TEXT NOT NULL DEFAULT (${NOW_ISO})
     );
   `);
-
-  // Migration for databases created before email verification existed.
-  const accountCols = await db.prepare("PRAGMA table_info(accounts)").all<{ name: string }>();
-  if (!accountCols.some((c) => c.name === "email_verified")) {
-    // Pre-existing accounts were created without verification; grandfather them
-    // in as verified rather than locking their owners out.
-    await db.exec("ALTER TABLE accounts ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 1");
-  }
 
   // One-time seed: preserves the content that used to live hardcoded in
   // src/lib/posts.ts and src/lib/site.ts so the admin panel has a starting
@@ -297,7 +351,7 @@ async function init(): Promise<AppDb> {
         "Your local independent pharmacy in Austin, Texas",
         "(512) 249-7500",
         "tel:+15122497500",
-        "(512) 249-7501",
+        "(512) 249-7512",
         "info@libertypharmacyatx.com",
         "8650 Spicewood Springs Rd #106",
         "Austin",
@@ -321,7 +375,7 @@ declare global {
   var __libertyDbPromise: Promise<AppDb> | undefined;
 }
 
-/** Reuse one connection across Next.js hot reloads. */
+/** Reuse one pool across Next.js hot reloads. */
 export function getDb(): Promise<AppDb> {
   if (!globalThis.__libertyDbPromise) globalThis.__libertyDbPromise = init();
   return globalThis.__libertyDbPromise;

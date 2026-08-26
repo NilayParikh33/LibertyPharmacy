@@ -73,7 +73,7 @@ export async function createPost(input: PostInput): Promise<number> {
   const result = await db
     .prepare(
       `INSERT INTO posts (slug, title, excerpt, author, date, read_minutes, sections_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`
     )
     .run(input.slug, input.title, input.excerpt, input.author, input.date, input.readMinutes, JSON.stringify(input.sections));
   return result.lastInsertRowid;
@@ -84,9 +84,9 @@ export async function updatePost(id: number, input: PostInput): Promise<void> {
   await db
     .prepare(
       `UPDATE posts SET slug = ?, title = ?, excerpt = ?, author = ?, date = ?, read_minutes = ?, sections_json = ?,
-       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
+       updated_at = ? WHERE id = ?`
     )
-    .run(input.slug, input.title, input.excerpt, input.author, input.date, input.readMinutes, JSON.stringify(input.sections), id);
+    .run(input.slug, input.title, input.excerpt, input.author, input.date, input.readMinutes, JSON.stringify(input.sections), new Date().toISOString(), id);
 }
 
 export async function deletePost(id: number): Promise<void> {

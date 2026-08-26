@@ -1,27 +1,45 @@
 import nodemailer from "nodemailer";
+import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
 
 /**
  * Outbound email seam.
  *
- * Current transport: Gmail SMTP (free) — activates when GMAIL_USER and
- * GMAIL_APP_PASSWORD are set in .env.local. Suitable for the fake-data /
- * demo phase ONLY: consumer Gmail offers no BAA, so before real patients
- * enroll this must be swapped for a BAA-covered provider (AWS SES under the
- * AWS BAA is the plan — only the `send` internals below change).
+ * Primary transport: Amazon SES — activates when SES_FROM_EMAIL is set.
+ * BAA-covered under the same AWS account/BAA as RDS (see src/lib/db.ts),
+ * so this is the only transport allowed to carry mail once real patients
+ * enroll. The from address must be a verified SES identity (see
+ * .env.example), and the account must be out of the SES sandbox to send to
+ * arbitrary recipient addresses.
  *
- * Without credentials, dev prints codes to the server console and production
- * refuses to send rather than failing silently.
+ * Fallback transport: Gmail SMTP (free, no BAA) — demo/dev phase only.
+ * Deliberately never used when NODE_ENV=production, even if the env vars
+ * are still set, so a stray leftover Gmail credential can't silently carry
+ * mail through a non-BAA path once this is deployed for real.
+ *
+ * Without any transport configured, dev prints codes to the server console
+ * and production refuses to send rather than failing silently.
  *
  * PHI note: OTP messages deliberately contain no health information — just a
  * code. Never add prescription, appointment, or medical content to any email
  * sent through a non-BAA transport.
  */
 
+const sesFromEmail = process.env.SES_FROM_EMAIL;
 const gmailUser = process.env.GMAIL_USER;
 const gmailPass = process.env.GMAIL_APP_PASSWORD;
+const isProduction = process.env.NODE_ENV === "production";
 
-const transporter =
-  gmailUser && gmailPass
+const sesTransporter = sesFromEmail
+  ? nodemailer.createTransport({
+      SES: {
+        sesClient: new SESv2Client({ region: process.env.AWS_REGION }),
+        SendEmailCommand,
+      },
+    })
+  : null;
+
+const gmailTransporter =
+  !isProduction && gmailUser && gmailPass
     ? nodemailer.createTransport({
         host: "smtp.gmail.com",
         port: 465,
@@ -29,6 +47,9 @@ const transporter =
         auth: { user: gmailUser, pass: gmailPass },
       })
     : null;
+
+const transporter = sesTransporter ?? gmailTransporter;
+const fromAddress = sesTransporter ? sesFromEmail! : gmailUser;
 
 export async function sendOtpEmail(
   to: string,
@@ -47,7 +68,7 @@ export async function sendOtpEmail(
 
   if (transporter) {
     await transporter.sendMail({
-      from: `"Liberty Pharmacy" <${gmailUser}>`,
+      from: `"Liberty Pharmacy" <${fromAddress}>`,
       to,
       subject,
       text: `${intro}\n\n${code}\n\nThis code expires in 10 minutes. If you didn't request it, you can ignore this email.`,
@@ -82,12 +103,12 @@ export interface ContactMessageInput {
 
 /**
  * Forwards a general-inquiry contact-form submission to the pharmacy inbox.
- * Temporary delivery channel: same non-BAA Gmail transport as OTP mail, which
- * is acceptable here because src/app/api/contact/route.ts already screens out
- * anything that looks like PHI before this is ever called.
+ * Same transport as OTP mail (SES when configured, Gmail only pre-production)
+ * — safe even on the non-BAA fallback because src/app/api/contact/route.ts
+ * already screens out anything that looks like PHI before this is ever called.
  */
 export async function sendContactEmail(data: ContactMessageInput): Promise<void> {
-  const to = process.env.CONTACT_FORWARD_EMAIL || gmailUser;
+  const to = process.env.CONTACT_FORWARD_EMAIL || fromAddress;
   const subject = `Contact form: ${data.subject} — ${data.firstName} ${data.lastName}`;
   const text = `New contact form submission\n\nName: ${data.firstName} ${data.lastName}\nEmail: ${data.email}\nPhone: ${data.phone || "(not provided)"}\nSubject: ${data.subject}\n\nMessage:\n${data.message}`;
   const html = `
@@ -102,7 +123,7 @@ export async function sendContactEmail(data: ContactMessageInput): Promise<void>
 
   if (transporter && to) {
     await transporter.sendMail({
-      from: `"Liberty Pharmacy Website" <${gmailUser}>`,
+      from: `"Liberty Pharmacy Website" <${fromAddress}>`,
       to,
       replyTo: data.email,
       subject,
