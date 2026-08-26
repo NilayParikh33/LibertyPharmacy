@@ -18,10 +18,19 @@
 # debug
 npm-debug.log*
 
-# env files — never commit secrets (DRX API keys will live here later)
+# Local database files — the dev Postgres cluster lives here. Never commit:
+# these are the raw data files, so anything registered through the local
+# portal would end up in version control.
+/data
+
+# env files — never commit secrets.
+# .env.local was tracked during the demo phase and has been removed from
+# version control. The secrets it held are still readable from git history,
+# so every one of them was rotated at the same time — see SECURITY-RISK-ANALYSIS.md
+# finding T-01. Never commit this file again.
 .env
-# .env.local is intentionally COMMITTED for the demo phase (private repo).
-# Must be removed from version control before real patient data exists.
+.env.local
+.env.local.backup-*
 .env.development.local
 .env.test.local
 .env.production.local

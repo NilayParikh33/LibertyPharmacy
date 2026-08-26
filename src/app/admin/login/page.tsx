@@ -20,6 +20,7 @@ export default function AdminLoginPage() {
         body: JSON.stringify({
           username: form.get("username"),
           password: form.get("password"),
+          token: form.get("token"),
         }),
       });
       const data = await res.json();
@@ -64,6 +65,26 @@ export default function AdminLoginPage() {
               required
               className="input-field"
             />
+          </div>
+          <div>
+            <label htmlFor="token" className="mb-1.5 block text-sm font-medium text-slate-700">
+              Authentication code
+            </label>
+            <input
+              id="token"
+              name="token"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              pattern="[0-9]*"
+              maxLength={6}
+              required
+              placeholder="000000"
+              className="input-field text-center text-lg tracking-[0.4em]"
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              6-digit code from your authenticator app.
+            </p>
           </div>
           <button type="submit" disabled={busy} className="btn-primary w-full disabled:opacity-60">
             {busy ? "Signing in…" : "Sign in"}
