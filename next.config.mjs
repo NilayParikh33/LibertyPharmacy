@@ -62,6 +62,9 @@ const securityHeaders = [
 const nextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
+  // Traces only the node_modules each route actually needs into .next/standalone,
+  // instead of the whole node_modules tree — keeps the ECS/Docker image small.
+  output: "standalone",
   async headers() {
     return [
       {
