@@ -92,6 +92,37 @@ export async function sendOtpEmail(
   throw new Error("Email transport not configured — cannot send verification codes in production.");
 }
 
+/** `resetUrl` already has the single-use token embedded — see requestPasswordReset in src/lib/auth.ts. */
+export async function sendPasswordResetEmail(to: string, resetUrl: string): Promise<void> {
+  const subject = "Reset your Liberty Pharmacy password";
+
+  if (transporter) {
+    await transporter.sendMail({
+      from: `"Liberty Pharmacy" <${fromAddress}>`,
+      to,
+      subject,
+      text: `A password reset was requested for your Liberty Pharmacy account.\n\n${resetUrl}\n\nThis link expires in 30 minutes. If you didn't request it, you can ignore this email — your password won't change.`,
+      html: `
+        <div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px">
+          <h2 style="color:#1b2a47;margin:0 0 16px">Liberty Pharmacy</h2>
+          <p style="color:#334155;font-size:15px;line-height:1.6">A password reset was requested for your account. Click below to choose a new password:</p>
+          <p style="text-align:center;padding:8px 0">
+            <a href="${resetUrl}" style="display:inline-block;background:#1b2a47;color:#fff;text-decoration:none;font-weight:bold;padding:12px 28px;border-radius:8px">Reset password</a>
+          </p>
+          <p style="color:#64748b;font-size:13px;line-height:1.6">This link expires in 30 minutes. If you didn't request it, you can safely ignore this email — your password won't change.</p>
+        </div>`,
+    });
+    return;
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`\n[mail:dev] To: ${to}\n[mail:dev] Subject: ${subject}\n[mail:dev] Reset link: ${resetUrl}\n`);
+    return;
+  }
+
+  throw new Error("Email transport not configured — cannot send password reset links in production.");
+}
+
 export interface ContactMessageInput {
   firstName: string;
   lastName: string;
