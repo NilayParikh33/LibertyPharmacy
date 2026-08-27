@@ -13,6 +13,9 @@ COPY . .
 # bundle) — runtime env vars (DATABASE_URL, SES_FROM_EMAIL, etc.) are still
 # supplied by the ECS task definition at deploy time, not baked into the image.
 ENV NODE_ENV=production
+# This project has no public/ directory; create an empty one so the runner
+# stage's COPY (and Next's static file serving) don't fail on its absence.
+RUN mkdir -p public
 RUN npm run build
 
 # ---------------------------------------------------------------------------
