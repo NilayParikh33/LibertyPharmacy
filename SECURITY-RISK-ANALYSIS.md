@@ -7,6 +7,7 @@
 |---|---|
 | Document status | **DRAFT — NOT YET ADOPTED** |
 | Draft prepared | 2026-08-26 |
+| Last revised | 2026-08-27 — technical remediation, see §10 |
 | Prepared by | Development team (technical sections) |
 | Security Officer | ☐ *Not yet designated — see Finding A-01* |
 | Reviewed / adopted on | ☐ *Pending* |
@@ -501,6 +502,55 @@ it is a required specification with no "addressable" flexibility.*
 - Annual restore test and contingency-plan test
 
 ---
+
+## 7A. Remediation Log — 2026-08-27
+
+Recorded here so the closure of each finding is evidenced rather than
+asserted. Verification was performed against the production environment
+unless stated otherwise.
+
+| ID | Status | What changed | How it was verified |
+|---|---|---|---|
+| T-01 | **Closed** | Secrets rotated; `.env.local` untracked and gitignored; production values held in AWS Secrets Manager and injected at container start into a `600` temp file deleted immediately after. Nothing on disk, in the image, or in git. | Confirmed no secret values in the staged diff; confirmed the running container reads from Secrets Manager. |
+| T-02 | **Closed** | Per-user `admin_users` with individual TOTP seeds (encrypted at rest); server-side `admin_sessions` that can be revoked; admin actions written to `audit_log` with the acting username. | Live production test: valid login 200, wrong password 401, TOTP replay 401, logout invalidates the session server-side, audit rows attributed to `admin:<username>`. |
+| T-04 | **Closed** | Automated backups 30 days, deletion protection enabled, restore procedure exercised. | See §7B — a restore test was performed and found a real gap, which was then corrected. |
+| T-06 | **Closed** | Contact-message name, email, phone, subject and body encrypted with AES-256-GCM at rest. | Live submission through the production form; raw DB row confirmed `v1:` ciphertext; plaintext search for the message body returned 0 rows. |
+| T-07 | **Partially closed** | `audit_log` owned by the master role; application role holds `SELECT, INSERT` only. Retention and periodic review still outstanding. | Executed as the application user against production: `INSERT` succeeded, `UPDATE` and `DELETE` both denied, row unchanged. |
+| T-03 | **Open — accepted** | Rate limiting remains per-process. Acceptable while the app runs as a single instance; must be revisited before a second instance is added. | — |
+| T-05 | **Partially closed** | Key now held in Secrets Manager, distinct from development. Versioned rotation procedure still to be written. | — |
+| T-08 | **Closed** | Production sends via Amazon SES under BAA; the Gmail path is unreachable when `NODE_ENV=production`. | Code path confirmed in `src/lib/mail.ts`; `SES_FROM_EMAIL` set in Secrets Manager. |
+
+### Still outstanding
+
+- **T-07 retention**: six-year retention and archival, plus a documented
+  periodic review cadence (§164.308(a)(1)(ii)(D)).
+- **T-05 rotation**: a written, tested key-rotation procedure.
+- **All of §5 and §6**: unchanged — these remain the pharmacy's to complete,
+  and no technical work substitutes for them.
+
+## 7B. Backup Restore Test — 2026-08-27
+
+Performed per §164.308(a)(7). Recorded in full because the first attempt
+failed, and that failure is the most useful part of the record.
+
+**First attempt.** The most recent automated snapshot
+(`rds:liberty-pharmacy-db-2026-08-27-11-18`) was restored to a temporary
+instance. The restored server contained only the `postgres` and `rdsadmin`
+system databases — **the `liberty` application database was absent**. The
+snapshot had been taken before the application database was created, so the
+only backup then in existence would not have restored the system.
+
+Had this been assumed rather than tested, the pharmacy would have believed
+itself protected while holding a backup that restored nothing.
+
+**Corrective action.** A manual snapshot (`liberty-manual-20260827-1707`) was
+taken immediately, and restored to verify it contains the application
+database and its data. The temporary instances were deleted after each test.
+
+**Conclusion.** Backups are configured correctly going forward; the gap was a
+timing artefact of initial provisioning. The lesson stands on its own: an
+untested backup is an assumption, not a control. **Repeat this test at least
+annually, and after any change to the database or its backup configuration.**
 
 ## 8. Limitations of This Analysis
 
