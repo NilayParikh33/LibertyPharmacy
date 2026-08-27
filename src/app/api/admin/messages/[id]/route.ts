@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { isAdminSessionValid } from "@/lib/admin-auth";
+import { getCurrentAdmin } from "@/lib/admin-auth";
 import { getDb } from "@/lib/db";
+import { audit } from "@/lib/db";
+import { getClientIp } from "@/lib/request";
 
 const statusSchema = z.object({ status: z.enum(["new", "read", "replied"]) });
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await isAdminSessionValid())) {
+  const admin = await getCurrentAdmin();
+  if (!admin) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
@@ -25,5 +28,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   const db = await getDb();
   await db.prepare("UPDATE contact_messages SET status = ? WHERE id = ?").run(parsed.data.status, id);
+  await audit({
+    actor: `admin:${admin.username}`,
+    action: "admin.message.status",
+    subject: `message:${id}`,
+    outcome: "success",
+    detail: `status=${parsed.data.status}`,
+    ip: getClientIp(request),
+  });
   return NextResponse.json({ ok: true });
 }

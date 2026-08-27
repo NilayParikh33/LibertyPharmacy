@@ -1,4 +1,6 @@
-import { getDb } from "@/lib/db";
+import { getDb, audit } from "@/lib/db";
+import { decryptMaybePlaintext } from "@/lib/crypto";
+import { requireAdmin } from "@/lib/admin-auth";
 import MessageStatusControl from "@/components/admin/MessageStatusControl";
 
 interface MessageRow {
@@ -32,10 +34,32 @@ function formatDate(iso: string) {
 }
 
 export default async function AdminMessagesPage() {
+  const admin = await requireAdmin();
   const db = await getDb();
-  const messages = await db
+  const rows = await db
     .prepare("SELECT * FROM contact_messages ORDER BY created_at DESC")
     .all<MessageRow>();
+
+  // Columns are AES-256-GCM at rest; rows written before finding T-06 was
+  // fixed are still plaintext and pass through unchanged.
+  const messages = rows.map((m) => ({
+    ...m,
+    first_name: decryptMaybePlaintext(m.first_name),
+    last_name: decryptMaybePlaintext(m.last_name),
+    email: decryptMaybePlaintext(m.email),
+    phone: m.phone ? decryptMaybePlaintext(m.phone) : null,
+    subject: decryptMaybePlaintext(m.subject),
+    message: decryptMaybePlaintext(m.message),
+  }));
+
+  // Reading inquiries is an access event: staff are viewing what patients
+  // wrote about themselves, so it belongs in the audit trail (§164.312(b)).
+  await audit({
+    actor: `admin:${admin.username}`,
+    action: "admin.messages.list",
+    outcome: "success",
+    detail: `count=${messages.length}`,
+  });
 
   return (
     <div>

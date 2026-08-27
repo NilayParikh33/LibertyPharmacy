@@ -250,19 +250,53 @@ async function init(): Promise<AppDb> {
       ip          TEXT,
       at          TEXT NOT NULL DEFAULT (${NOW_ISO})
     );
-    CREATE INDEX IF NOT EXISTS idx_audit_at ON audit_log(at);
+    -- NOTE: audit_log's index is created separately, after this block. In
+    -- production the table is deliberately owned by another role so the app
+    -- cannot UPDATE or DELETE its own audit trail (finding T-07), and
+    -- CREATE INDEX requires ownership even when the index already exists.
 
-    -- General-inquiry contact form submissions. No [enc] columns: the API
-    -- route screens out anything that looks like PHI before a row is ever
-    -- written here (see src/app/api/contact/route.ts).
+    -- Internal staff accounts for the admin panel, one row per person.
+    -- Separate from the accounts table (patients) on purpose: different
+    -- lifecycle,
+    -- different auth surface, and no PHI. A distinct row per staff member is
+    -- what makes admin actions attributable in audit_log — a single shared
+    -- login cannot satisfy §164.312(a)(2)(i) (unique user identification).
+    CREATE TABLE IF NOT EXISTS admin_users (
+      id            SERIAL PRIMARY KEY,
+      username      TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,               -- scrypt, same scheme as patients
+      totp_secret   TEXT NOT NULL,               -- [enc] base32 seed, AES-256-GCM at rest
+      disabled_at   TEXT,                        -- set on departure; keeps the audit trail intact
+      created_at    TEXT NOT NULL DEFAULT (${NOW_ISO}),
+      last_login_at TEXT
+    );
+
+    -- Server-side admin sessions, so access can actually be revoked. The
+    -- previous stateless signed cookie could not be invalidated before its
+    -- own expiry, which meant a stolen cookie stayed usable and a departing
+    -- staff member could not be cut off without rotating everyone's secret.
+    CREATE TABLE IF NOT EXISTS admin_sessions (
+      id            SERIAL PRIMARY KEY,
+      token_hash    TEXT NOT NULL UNIQUE,        -- SHA-256 of the cookie token
+      admin_user_id INTEGER NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+      expires_at    TEXT NOT NULL,
+      created_at    TEXT NOT NULL DEFAULT (${NOW_ISO})
+    );
+    CREATE INDEX IF NOT EXISTS idx_admin_sessions_user ON admin_sessions(admin_user_id);
+
+    -- General-inquiry contact form submissions. The API route screens out
+    -- anything that obviously looks like PHI, but free-text screening cannot
+    -- be relied on ("my blood pressure medication makes me dizzy" defeats
+    -- every pattern), so the identifying and free-text columns are encrypted
+    -- at rest like any other PHI. See finding T-06.
     CREATE TABLE IF NOT EXISTS contact_messages (
       id          SERIAL PRIMARY KEY,
-      first_name  TEXT NOT NULL,
-      last_name   TEXT NOT NULL,
-      email       TEXT NOT NULL,
-      phone       TEXT,
-      subject     TEXT NOT NULL,
-      message     TEXT NOT NULL,
+      first_name  TEXT NOT NULL,                 -- [enc]
+      last_name   TEXT NOT NULL,                 -- [enc]
+      email       TEXT NOT NULL,                 -- [enc]
+      phone       TEXT,                          -- [enc]
+      subject     TEXT NOT NULL,                 -- [enc]
+      message     TEXT NOT NULL,                 -- [enc]
       status      TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','read','replied')),
       created_at  TEXT NOT NULL DEFAULT (${NOW_ISO})
     );
@@ -301,6 +335,19 @@ async function init(): Promise<AppDb> {
       updated_at     TEXT NOT NULL DEFAULT (${NOW_ISO})
     );
   `);
+
+  // audit_log's index, guarded. In production the table is owned by a
+  // different role than the application's, so that a compromised app can
+  // append to the audit trail but never rewrite or erase it (finding T-07).
+  // Postgres requires table ownership for CREATE INDEX even with IF NOT
+  // EXISTS, so check first and only issue the DDL when it's genuinely
+  // missing — otherwise every boot would fail with "must be owner".
+  const auditIndex = await db
+    .prepare("SELECT 1 AS present FROM pg_indexes WHERE schemaname = 'public' AND indexname = ?")
+    .get<{ present: number }>("idx_audit_at");
+  if (!auditIndex) {
+    await db.exec("CREATE INDEX IF NOT EXISTS idx_audit_at ON audit_log(at);");
+  }
 
   // One-time seed: preserves the content that used to live hardcoded in
   // src/lib/posts.ts and src/lib/site.ts so the admin panel has a starting

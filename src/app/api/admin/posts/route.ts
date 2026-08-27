@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { isAdminSessionValid } from "@/lib/admin-auth";
+import { getCurrentAdmin } from "@/lib/admin-auth";
 import { createPost } from "@/lib/posts";
+import { audit } from "@/lib/db";
+import { getClientIp } from "@/lib/request";
 
 export const postSchema = z.object({
   slug: z
@@ -26,7 +28,8 @@ export const postSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  if (!(await isAdminSessionValid())) {
+  const admin = await getCurrentAdmin();
+  if (!admin) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
@@ -44,6 +47,13 @@ export async function POST(request: Request) {
 
   try {
     const id = await createPost(parsed.data);
+    await audit({
+      actor: `admin:${admin.username}`,
+      action: "admin.post.create",
+      subject: `post:${id}`,
+      outcome: "success",
+      ip: getClientIp(request),
+    });
     return NextResponse.json({ ok: true, id });
   } catch {
     return NextResponse.json({ error: "A post with that slug already exists." }, { status: 409 });

@@ -1,6 +1,5 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
-import { isAdminSessionValid } from "@/lib/admin-auth";
+import { requireAdmin } from "@/lib/admin-auth";
 import AdminLogoutButton from "@/components/AdminLogoutButton";
 
 export const dynamic = "force-dynamic";
@@ -13,9 +12,7 @@ const links = [
 ];
 
 export default async function AdminProtectedLayout({ children }: { children: React.ReactNode }) {
-  if (!(await isAdminSessionValid())) {
-    redirect("/admin/login");
-  }
+  const admin = await requireAdmin();
 
   return (
     <section className="py-10">
@@ -32,7 +29,12 @@ export default async function AdminProtectedLayout({ children }: { children: Rea
               </Link>
             ))}
           </nav>
-          <AdminLogoutButton />
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-slate-500">
+              Signed in as <span className="font-medium text-slate-700">{admin.username}</span>
+            </span>
+            <AdminLogoutButton />
+          </div>
         </div>
         <div className="mt-8">{children}</div>
       </div>

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
+import { encryptPHI } from "@/lib/crypto";
 import { sendContactEmail } from "@/lib/mail";
 
 /**
@@ -71,7 +72,18 @@ export async function POST(request: Request) {
       `INSERT INTO contact_messages (first_name, last_name, email, phone, subject, message)
        VALUES (?, ?, ?, ?, ?, ?)`
     )
-    .run(data.firstName, data.lastName, data.email, data.phone || null, data.subject, data.message);
+    // Encrypted at rest (finding T-06). The PHI screening above rejects the
+    // obvious cases, but a sender can always describe a condition in ordinary
+    // words that no pattern will catch, so these columns are treated as
+    // though they will eventually contain health information.
+    .run(
+      encryptPHI(data.firstName),
+      encryptPHI(data.lastName),
+      encryptPHI(data.email),
+      data.phone ? encryptPHI(data.phone) : null,
+      encryptPHI(data.subject),
+      encryptPHI(data.message)
+    );
 
   // The submission is already durably stored above, so a transport hiccup
   // must not fail the request — the admin panel is the reliable path either

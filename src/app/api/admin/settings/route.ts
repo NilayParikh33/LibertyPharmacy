@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { isAdminSessionValid } from "@/lib/admin-auth";
+import { getCurrentAdmin } from "@/lib/admin-auth";
 import { updateSiteSettings } from "@/lib/site";
+import { audit } from "@/lib/db";
+import { getClientIp } from "@/lib/request";
 
 const settingsSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(200),
@@ -29,7 +31,8 @@ const settingsSchema = z.object({
 });
 
 export async function PUT(request: Request) {
-  if (!(await isAdminSessionValid())) {
+  const admin = await getCurrentAdmin();
+  if (!admin) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
@@ -46,5 +49,11 @@ export async function PUT(request: Request) {
   }
 
   await updateSiteSettings(parsed.data);
+  await audit({
+    actor: `admin:${admin.username}`,
+    action: "admin.settings.update",
+    outcome: "success",
+    ip: getClientIp(request),
+  });
   return NextResponse.json({ ok: true });
 }

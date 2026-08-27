@@ -1,25 +1,38 @@
 import { cookies } from "next/headers";
-import { createHash, createHmac, timingSafeEqual } from "crypto";
+import { redirect } from "next/navigation";
 import { verifySync } from "otplib";
+import { getDb, audit } from "@/lib/db";
+import {
+  hashPassword,
+  verifyPassword,
+  generateSessionToken,
+  hashSessionToken,
+  encryptPHI,
+  decryptPHI,
+} from "@/lib/crypto";
 
 /**
- * Admin authentication — deliberately separate from the patient-portal auth
- * in src/lib/auth.ts. There is exactly one internal admin identity (env-var
- * credentials), so this skips the account/session DB tables built for
- * PHI-handling patient accounts and instead uses a signed, stateless session
- * cookie.
+ * Admin authentication — one account per staff member, backed by the
+ * `admin_users` and `admin_sessions` tables.
  *
- * Sign-in requires two factors: the ADMIN_PASSWORD, plus a TOTP code from an
- * authenticator app (ADMIN_TOTP_SECRET). The admin panel can read
- * patient-submitted contact messages, so single-factor access to it was a
- * weaker gate than the patient portal it oversees — see finding T-02 in
- * SECURITY-RISK-ANALYSIS.md.
+ * Deliberately separate from the patient auth in src/lib/auth.ts: different
+ * lifecycle, no PHI of its own, and no email-delivery dependency (staff use
+ * an authenticator app, so admin access keeps working even if mail is down).
  *
- * STILL OPEN (T-02): this remains one *shared* identity, so admin actions
- * cannot be attributed to an individual (§164.312(a)(2)(i) wants a unique
- * identifier per user), sessions are stateless and therefore cannot be
- * revoked before they expire, and admin actions are not yet written to
- * audit_log. Those need per-user accounts backed by the sessions table.
+ * This replaces an earlier design that used a single shared identity from
+ * environment variables with a stateless signed cookie. That had three
+ * problems, all of them findings in SECURITY-RISK-ANALYSIS.md (T-02):
+ *
+ *  - A shared login cannot be attributed to a person, so the audit trail
+ *    could only ever say "the admin" — §164.312(a)(2)(i) requires a unique
+ *    identifier per user.
+ *  - A stateless cookie cannot be revoked before it expires, so a stolen
+ *    cookie stayed valid and a departing staff member could not be cut off
+ *    without rotating the secret for everyone.
+ *  - Admin actions were not written to audit_log at all.
+ *
+ * Sign-in requires the password plus a TOTP code. Each user has their own
+ * TOTP seed, stored encrypted at rest.
  */
 
 export const ADMIN_COOKIE = "lp_admin";
@@ -27,94 +40,124 @@ const SESSION_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 const MAX_FAILED_LOGINS = 5;
 const LOCKOUT_MS = 15 * 60 * 1000;
 
-function getSecret(): string {
-  const secret = process.env.ADMIN_SESSION_SECRET;
-  if (secret) return secret;
-  if (process.env.NODE_ENV !== "production") {
-    return "dev-only-insecure-admin-session-secret";
-  }
-  throw new Error("ADMIN_SESSION_SECRET is not set — cannot start admin sessions in production.");
-}
-
-function sign(expiresAtMs: number): string {
-  return createHmac("sha256", getSecret()).update(String(expiresAtMs)).digest("hex");
-}
-
-function safeEqual(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return timingSafeEqual(bufA, bufB);
-}
-
-/** Constant-time credential check against ADMIN_USERNAME / ADMIN_PASSWORD. */
-export function verifyAdminCredentials(username: string, password: string): boolean {
-  const expectedUser = process.env.ADMIN_USERNAME;
-  const expectedPass = process.env.ADMIN_PASSWORD;
-  if (!expectedUser || !expectedPass) {
-    if (process.env.NODE_ENV !== "production") {
-      console.warn("[admin-auth] ADMIN_USERNAME/ADMIN_PASSWORD not set — admin login is disabled.");
-    }
-    return false;
-  }
-  const userHash = createHash("sha256").update(username).digest("hex");
-  const expectedUserHash = createHash("sha256").update(expectedUser).digest("hex");
-  const passHash = createHash("sha256").update(password).digest("hex");
-  const expectedPassHash = createHash("sha256").update(expectedPass).digest("hex");
-  return safeEqual(userHash, expectedUserHash) && safeEqual(passHash, expectedPassHash);
-}
-
-// Tolerate one 30-second step either side of the current one, so a slightly
-// skewed phone clock doesn't lock the pharmacy out of its own admin panel.
+// One 30-second step of tolerance either side, so a slightly skewed phone
+// clock doesn't lock the pharmacy out of its own admin panel.
 const TOTP_EPOCH_TOLERANCE_SEC = 30;
 
-/** Whether a TOTP secret is configured at all. */
-export function isAdminMfaConfigured(): boolean {
-  return !!process.env.ADMIN_TOTP_SECRET;
+export interface AdminUser {
+  id: number;
+  username: string;
 }
 
-// A TOTP code stays valid for its whole step (plus the drift window above), so
-// without this an attacker who observes one code — over a shoulder, or in a
-// phished form — could replay it for up to ~90 seconds. Codes are burned on
-// first use. Entries are dropped once they can no longer be valid.
+interface AdminRow {
+  id: number;
+  username: string;
+  password_hash: string;
+  totp_secret: string;
+  disabled_at: string | null;
+}
+
+/**
+ * Creates the first admin from ADMIN_USERNAME / ADMIN_PASSWORD /
+ * ADMIN_TOTP_SECRET when no accounts exist yet.
+ *
+ * Runs only when `admin_users` is empty, so it cannot resurrect or overwrite
+ * an account that was deliberately removed or disabled. Once real accounts
+ * exist the env vars are ignored entirely and users are managed in the DB.
+ */
+async function seedFirstAdmin(): Promise<void> {
+  const db = await getDb();
+  const { n } = (await db.prepare("SELECT COUNT(*) AS n FROM admin_users").get<{ n: number }>()) ?? { n: 0 };
+  if (n > 0) return;
+
+  const username = process.env.ADMIN_USERNAME;
+  const password = process.env.ADMIN_PASSWORD;
+  const totp = process.env.ADMIN_TOTP_SECRET;
+  if (!username || !password || !totp) return;
+
+  await db
+    .prepare("INSERT INTO admin_users (username, password_hash, totp_secret) VALUES (?, ?, ?)")
+    .run(username, hashPassword(password), encryptPHI(totp));
+  await audit({
+    actor: "system",
+    action: "admin.user.seeded",
+    subject: `admin:${username}`,
+    outcome: "success",
+    detail: "bootstrapped first admin from environment",
+  });
+}
+
+async function findAdmin(username: string): Promise<AdminRow | undefined> {
+  await seedFirstAdmin();
+  const db = await getDb();
+  return db
+    .prepare("SELECT * FROM admin_users WHERE username = ? AND disabled_at IS NULL")
+    .get<AdminRow>(username);
+}
+
+// TOTP codes stay valid for their whole step plus the drift window above, so
+// without this an observed code could be replayed for ~90 seconds. Codes are
+// burned on first use.
 const usedTotpCodes = new Map<string, number>();
 const TOTP_REPLAY_TTL_MS = 120_000;
 
-/**
- * Verifies a TOTP code against ADMIN_TOTP_SECRET, rejecting reuse.
- *
- * Fails closed: with no secret configured, production refuses the login
- * outright rather than silently downgrading to password-only — an unset env
- * var should not be able to quietly disable a required safeguard.
- */
-export function verifyAdminTotp(token: string): boolean {
-  const secret = process.env.ADMIN_TOTP_SECRET;
-  if (!secret) {
-    if (process.env.NODE_ENV === "production") return false;
-    console.warn("[admin-auth] ADMIN_TOTP_SECRET not set — skipping MFA (development only).");
-    return true;
-  }
-
+function totpAlreadyUsed(key: string): boolean {
   const now = Date.now();
-  for (const [code, seenAt] of usedTotpCodes) {
-    if (seenAt < now - TOTP_REPLAY_TTL_MS) usedTotpCodes.delete(code);
+  for (const [k, seenAt] of usedTotpCodes) {
+    if (seenAt < now - TOTP_REPLAY_TTL_MS) usedTotpCodes.delete(k);
   }
-  if (usedTotpCodes.has(token)) return false;
-
-  let ok = false;
-  try {
-    ok = verifySync({ secret, token, epochTolerance: TOTP_EPOCH_TOLERANCE_SEC }).valid;
-  } catch {
-    // Malformed secret or token — treat as a failed attempt, never as a pass.
-    return false;
-  }
-  if (ok) usedTotpCodes.set(token, now);
-  return ok;
+  if (usedTotpCodes.has(key)) return true;
+  usedTotpCodes.set(key, now);
+  return false;
 }
 
-export async function createAdminSession(): Promise<void> {
+/**
+ * Verifies username + password + TOTP together, returning the user on success.
+ *
+ * Callers get a single yes/no and never learn which factor failed — naming it
+ * would tell an attacker when they had guessed the password correctly.
+ */
+export async function verifyAdminLogin(
+  username: string,
+  password: string,
+  token: string
+): Promise<AdminUser | null> {
+  const row = await findAdmin(username);
+  if (!row) return null;
+  if (!verifyPassword(password, row.password_hash)) return null;
+
+  // Scoped per user so one account's code can't be replayed against another.
+  if (totpAlreadyUsed(`${row.id}:${token}`)) return null;
+
+  let secret: string;
+  try {
+    secret = decryptPHI(row.totp_secret);
+  } catch {
+    // Seed unreadable (wrong key, corrupted row) — fail closed.
+    return null;
+  }
+
+  try {
+    if (!verifySync({ secret, token, epochTolerance: TOTP_EPOCH_TOLERANCE_SEC }).valid) return null;
+  } catch {
+    // Malformed token or seed — a failed attempt, never a pass.
+    return null;
+  }
+
+  const db = await getDb();
+  await db.prepare("UPDATE admin_users SET last_login_at = ? WHERE id = ?").run(new Date().toISOString(), row.id);
+  return { id: row.id, username: row.username };
+}
+
+/** Issues a server-side session and sets the cookie. */
+export async function createAdminSession(adminUserId: number): Promise<void> {
+  const token = generateSessionToken();
   const expires = Date.now() + SESSION_TTL_MS;
-  const token = `${expires}.${sign(expires)}`;
+  const db = await getDb();
+  await db
+    .prepare("INSERT INTO admin_sessions (token_hash, admin_user_id, expires_at) VALUES (?, ?, ?)")
+    .run(hashSessionToken(token), adminUserId, new Date(expires).toISOString());
+
   (await cookies()).set(ADMIN_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
@@ -124,23 +167,57 @@ export async function createAdminSession(): Promise<void> {
   });
 }
 
-export async function isAdminSessionValid(): Promise<boolean> {
+/** The signed-in admin, or null. Expired rows are deleted as they're found. */
+export async function getCurrentAdmin(): Promise<AdminUser | null> {
   const token = (await cookies()).get(ADMIN_COOKIE)?.value;
-  if (!token) return false;
-  const [expiresStr, signature] = token.split(".");
-  const expires = Number(expiresStr);
-  if (!expiresStr || !signature || Number.isNaN(expires)) return false;
-  if (Date.now() > expires) return false;
-  return safeEqual(signature, sign(expires));
+  if (!token) return null;
+
+  const db = await getDb();
+  const row = await db
+    .prepare(
+      `SELECT u.id, u.username, s.expires_at
+         FROM admin_sessions s
+         JOIN admin_users u ON u.id = s.admin_user_id
+        WHERE s.token_hash = ? AND u.disabled_at IS NULL`
+    )
+    .get<{ id: number; username: string; expires_at: string }>(hashSessionToken(token));
+
+  if (!row) return null;
+  if (new Date(row.expires_at).getTime() <= Date.now()) {
+    await db.prepare("DELETE FROM admin_sessions WHERE token_hash = ?").run(hashSessionToken(token));
+    return null;
+  }
+  return { id: row.id, username: row.username };
+}
+
+/** For server components: the current admin, or a redirect to sign-in. */
+export async function requireAdmin(): Promise<AdminUser> {
+  const admin = await getCurrentAdmin();
+  if (!admin) redirect("/admin/login");
+  return admin;
 }
 
 export async function destroyAdminSession(): Promise<void> {
-  (await cookies()).delete(ADMIN_COOKIE);
+  const jar = await cookies();
+  const token = jar.get(ADMIN_COOKIE)?.value;
+  if (token) {
+    const db = await getDb();
+    await db.prepare("DELETE FROM admin_sessions WHERE token_hash = ?").run(hashSessionToken(token));
+  }
+  jar.delete(ADMIN_COOKIE);
 }
 
-// In-memory login rate limit — mirrors the pattern in
-// src/app/api/auth/register/route.ts. A single-process concern, acceptable
-// for a low-traffic internal login endpoint.
+/**
+ * Revokes every session for one admin — the control that was impossible with
+ * stateless cookies. Use on staff departure or a suspected stolen session.
+ */
+export async function revokeAllSessionsFor(adminUserId: number): Promise<void> {
+  const db = await getDb();
+  await db.prepare("DELETE FROM admin_sessions WHERE admin_user_id = ?").run(adminUserId);
+}
+
+// In-memory login throttle. Per-process, which is sufficient while the app
+// runs as a single instance; see finding T-03 before scaling horizontally.
 const attempts = new Map<string, { count: number; lockedUntil: number | null; resetAt: number }>();
 
 export function isLoginLocked(ip: string): boolean {

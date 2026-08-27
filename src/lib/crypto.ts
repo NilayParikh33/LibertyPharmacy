@@ -87,3 +87,24 @@ export function generateOtpCode(): string {
 export function hashSessionToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
+
+/**
+ * Decrypts a column that may predate encryption being applied to it.
+ *
+ * Used for `contact_messages`, which stored plaintext before finding T-06 was
+ * addressed. Rows written before that change have no `v1:` prefix and are
+ * returned as-is, so old messages stay readable in the admin panel instead of
+ * throwing. New rows are always encrypted; this tolerance only ever applies
+ * backwards, never to anything written from now on.
+ */
+export function decryptMaybePlaintext(stored: string | null): string {
+  if (!stored) return "";
+  if (!stored.startsWith("v1:")) return stored;
+  try {
+    return decryptPHI(stored);
+  } catch {
+    // Wrong key or corrupted value — surface it in the UI rather than
+    // crashing the page and hiding every other message alongside it.
+    return "[unable to decrypt]";
+  }
+}
