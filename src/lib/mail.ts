@@ -52,19 +52,19 @@ const transporter = sesTransporter ?? gmailTransporter;
 const fromAddress = sesTransporter ? sesFromEmail! : gmailUser;
 
 /**
- * Where patient replies should land.
+ * Sent from a no-reply address on the pharmacy's own domain — a domain
+ * identity is what lets DKIM align and keeps login codes out of spam.
  *
- * Mail is sent from a no-reply address on the pharmacy's own domain, because
- * a domain identity is what lets DKIM align and keeps login codes out of spam.
- * That domain has no mailbox, though, so without this a patient who hits
- * reply — and some will, asking a question — would have their message vanish
- * silently. MAIL_REPLY_TO points at an inbox a person actually reads.
- *
- * Note for whoever monitors it: replies may contain health information, so
- * that inbox is subject to the same BAA requirement as any other channel
- * carrying PHI.
+ * These messages deliberately carry NO reply-to. The domain has no mailbox,
+ * so a reply goes nowhere; rather than let a patient believe they have
+ * reached the pharmacy, the message body tells them where to go instead.
+ * Routing replies to a consumer inbox was the alternative, and it would put
+ * a channel that can carry health information outside the BAA.
  */
-const replyToAddress = process.env.MAIL_REPLY_TO;
+const NO_REPLY_NOTE =
+  "Please do not reply to this email — this address is not monitored. " +
+  "For help, call the pharmacy or use the contact form at " +
+  (process.env.APP_BASE_URL ?? "https://rxlibertypharmacy.com") + "/contact.";
 
 export async function sendOtpEmail(
   to: string,
@@ -84,16 +84,16 @@ export async function sendOtpEmail(
   if (transporter) {
     await transporter.sendMail({
       from: `"Liberty Pharmacy" <${fromAddress}>`,
-      ...(replyToAddress ? { replyTo: replyToAddress } : {}),
       to,
       subject,
-      text: `${intro}\n\n${code}\n\nThis code expires in 10 minutes. If you didn't request it, you can ignore this email.`,
+      text: `${intro}\n\n${code}\n\nThis code expires in 10 minutes. If you didn't request it, you can ignore this email.\n\n${NO_REPLY_NOTE}`,
       html: `
         <div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px">
           <h2 style="color:#1b2a47;margin:0 0 16px">Liberty Pharmacy</h2>
           <p style="color:#334155;font-size:15px;line-height:1.6">${intro}</p>
           <p style="font-size:32px;letter-spacing:8px;font-weight:bold;color:#1b2a47;text-align:center;background:#f1f5f9;border-radius:8px;padding:16px 0">${code}</p>
           <p style="color:#64748b;font-size:13px;line-height:1.6">This code expires in 10 minutes. If you didn't request it, you can safely ignore this email.</p>
+          <p style="color:#94a3b8;font-size:12px;line-height:1.6;border-top:1px solid #e2e8f0;padding-top:12px;margin-top:16px">${NO_REPLY_NOTE}</p>
         </div>`,
     });
     return;
@@ -115,10 +115,9 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
   if (transporter) {
     await transporter.sendMail({
       from: `"Liberty Pharmacy" <${fromAddress}>`,
-      ...(replyToAddress ? { replyTo: replyToAddress } : {}),
       to,
       subject,
-      text: `A password reset was requested for your Liberty Pharmacy account.\n\n${resetUrl}\n\nThis link expires in 30 minutes. If you didn't request it, you can ignore this email — your password won't change.`,
+      text: `A password reset was requested for your Liberty Pharmacy account.\n\n${resetUrl}\n\nThis link expires in 30 minutes. If you didn't request it, you can ignore this email — your password won't change.\n\n${NO_REPLY_NOTE}`,
       html: `
         <div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px">
           <h2 style="color:#1b2a47;margin:0 0 16px">Liberty Pharmacy</h2>
@@ -127,6 +126,7 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
             <a href="${resetUrl}" style="display:inline-block;background:#1b2a47;color:#fff;text-decoration:none;font-weight:bold;padding:12px 28px;border-radius:8px">Reset password</a>
           </p>
           <p style="color:#64748b;font-size:13px;line-height:1.6">This link expires in 30 minutes. If you didn't request it, you can safely ignore this email — your password won't change.</p>
+          <p style="color:#94a3b8;font-size:12px;line-height:1.6;border-top:1px solid #e2e8f0;padding-top:12px;margin-top:16px">${NO_REPLY_NOTE}</p>
         </div>`,
     });
     return;
@@ -150,30 +150,46 @@ export interface ContactMessageInput {
 }
 
 /**
- * Forwards a general-inquiry contact-form submission to the pharmacy inbox.
- * Same transport as OTP mail (SES when configured, Gmail only pre-production)
- * — safe even on the non-BAA fallback because src/app/api/contact/route.ts
- * already screens out anything that looks like PHI before this is ever called.
+ * Notifies the pharmacy that a contact-form submission has arrived.
+ *
+ * Deliberately carries NO message content — not the body, not the sender's
+ * name, email, or phone. The submission itself is already stored encrypted
+ * (see contact_messages in src/lib/db.ts) and is read in the admin panel,
+ * which sits behind MFA and writes an audit entry for every view.
+ *
+ * The route screens submissions for obvious PHI patterns, but free-text
+ * screening cannot catch someone describing a condition in ordinary words.
+ * Putting that text in an email would copy it into whichever inbox the
+ * pharmacy uses — typically a consumer mailbox with no BAA — which is the
+ * least protected place it could land, and the one place it can never be
+ * deleted from with any confidence. So this is a doorbell, not a delivery.
  */
-export async function sendContactEmail(data: ContactMessageInput): Promise<void> {
+export async function sendContactEmail(_data: ContactMessageInput): Promise<void> {
   const to = process.env.CONTACT_FORWARD_EMAIL || fromAddress;
-  const subject = `Contact form: ${data.subject} — ${data.firstName} ${data.lastName}`;
-  const text = `New contact form submission\n\nName: ${data.firstName} ${data.lastName}\nEmail: ${data.email}\nPhone: ${data.phone || "(not provided)"}\nSubject: ${data.subject}\n\nMessage:\n${data.message}`;
+  const adminUrl = `${process.env.APP_BASE_URL ?? "https://rxlibertypharmacy.com"}/admin/messages`;
+  const subject = "New contact form message";
+  const text =
+    `A new message was submitted through the website contact form.\n\n` +
+    `Open the admin panel to read and reply to it:\n${adminUrl}\n\n` +
+    `Message details are not included in this email on purpose — they are ` +
+    `kept encrypted in the patient portal rather than copied into an inbox.`;
   const html = `
     <div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;padding:24px">
-      <h2 style="color:#1b2a47;margin:0 0 16px">New contact form submission</h2>
-      <p style="color:#334155;font-size:14px;margin:4px 0"><strong>Name:</strong> ${data.firstName} ${data.lastName}</p>
-      <p style="color:#334155;font-size:14px;margin:4px 0"><strong>Email:</strong> ${data.email}</p>
-      <p style="color:#334155;font-size:14px;margin:4px 0"><strong>Phone:</strong> ${data.phone || "(not provided)"}</p>
-      <p style="color:#334155;font-size:14px;margin:4px 0"><strong>Subject:</strong> ${data.subject}</p>
-      <p style="color:#334155;font-size:14px;line-height:1.6;white-space:pre-wrap;margin-top:16px;background:#f1f5f9;border-radius:8px;padding:12px">${data.message}</p>
+      <h2 style="color:#1b2a47;margin:0 0 12px">New contact form message</h2>
+      <p style="color:#334155;font-size:15px;line-height:1.6">A new message was submitted through the website contact form.</p>
+      <p style="text-align:center;padding:8px 0">
+        <a href="${adminUrl}" style="display:inline-block;background:#1b2a47;color:#fff;text-decoration:none;font-weight:bold;padding:12px 28px;border-radius:8px">Open admin panel</a>
+      </p>
+      <p style="color:#94a3b8;font-size:12px;line-height:1.6;border-top:1px solid #e2e8f0;padding-top:12px;margin-top:16px">
+        Message details are not included in this email on purpose — they are kept
+        encrypted in the patient portal rather than copied into an inbox.
+      </p>
     </div>`;
 
   if (transporter && to) {
     await transporter.sendMail({
       from: `"Liberty Pharmacy Website" <${fromAddress}>`,
       to,
-      replyTo: data.email,
       subject,
       text,
       html,
@@ -182,9 +198,9 @@ export async function sendContactEmail(data: ContactMessageInput): Promise<void>
   }
 
   if (process.env.NODE_ENV !== "production") {
-    console.log(`\n[mail:dev] Contact form submission (no transport configured):\n${text}\n`);
+    console.log(`\n[mail:dev] Contact form notification (no transport configured):\n${text}\n`);
     return;
   }
 
-  throw new Error("Email transport not configured — cannot forward contact form submissions in production.");
+  throw new Error("Email transport not configured — cannot notify of contact form submissions in production.");
 }
