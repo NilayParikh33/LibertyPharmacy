@@ -51,6 +51,21 @@ const gmailTransporter =
 const transporter = sesTransporter ?? gmailTransporter;
 const fromAddress = sesTransporter ? sesFromEmail! : gmailUser;
 
+/**
+ * Where patient replies should land.
+ *
+ * Mail is sent from a no-reply address on the pharmacy's own domain, because
+ * a domain identity is what lets DKIM align and keeps login codes out of spam.
+ * That domain has no mailbox, though, so without this a patient who hits
+ * reply — and some will, asking a question — would have their message vanish
+ * silently. MAIL_REPLY_TO points at an inbox a person actually reads.
+ *
+ * Note for whoever monitors it: replies may contain health information, so
+ * that inbox is subject to the same BAA requirement as any other channel
+ * carrying PHI.
+ */
+const replyToAddress = process.env.MAIL_REPLY_TO;
+
 export async function sendOtpEmail(
   to: string,
   code: string,
@@ -69,6 +84,7 @@ export async function sendOtpEmail(
   if (transporter) {
     await transporter.sendMail({
       from: `"Liberty Pharmacy" <${fromAddress}>`,
+      ...(replyToAddress ? { replyTo: replyToAddress } : {}),
       to,
       subject,
       text: `${intro}\n\n${code}\n\nThis code expires in 10 minutes. If you didn't request it, you can ignore this email.`,
@@ -99,6 +115,7 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
   if (transporter) {
     await transporter.sendMail({
       from: `"Liberty Pharmacy" <${fromAddress}>`,
+      ...(replyToAddress ? { replyTo: replyToAddress } : {}),
       to,
       subject,
       text: `A password reset was requested for your Liberty Pharmacy account.\n\n${resetUrl}\n\nThis link expires in 30 minutes. If you didn't request it, you can ignore this email — your password won't change.`,
