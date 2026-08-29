@@ -520,10 +520,68 @@ unless stated otherwise.
 | T-05 | **Partially closed** | Key now held in Secrets Manager, distinct from development. Versioned rotation procedure still to be written. | — |
 | T-08 | **Closed** | Production sends via Amazon SES under BAA; the Gmail path is unreachable when `NODE_ENV=production`. | Code path confirmed in `src/lib/mail.ts`; `SES_FROM_EMAIL` set in Secrets Manager. |
 
+## 7C. Audit Retention and Review Policy — adopted 2026-08-29
+
+Closes the remainder of T-07. Two separate requirements are addressed here,
+and they are commonly confused: retaining records, and *reading* them.
+
+### Retention (§164.316(b)(2)(i) — six years)
+
+- Audit entries are never deleted from the database. The application role
+  holds `SELECT, INSERT` only, so it cannot remove its own trail even if
+  compromised.
+- Each calendar month is additionally exported to
+  `s3://liberty-pharmacy-audit-archive-429186228745/audit-log/<year>/`
+  as newline-delimited JSON.
+- The bucket has **S3 Object Lock in GOVERNANCE mode with 2192-day (6-year)
+  retention**, default AES-256 encryption, versioning, and all public access
+  blocked.
+- A bucket policy denies `PutObject` without `if-none-match: *`, so an
+  existing archive cannot be replaced, and denies all non-TLS access.
+
+**Why the archive is necessary, and not merely belt-and-braces:** RDS
+backups are retained 30 days. Without this, any audit entry older than 30
+days existed in exactly one place — the live table. Losing the instance
+would have destroyed years of records the law requires you to still hold.
+
+**Verified 2026-08-29.** Against the live bucket: deleting an archived
+object was refused by Object Lock; overwriting it was refused by the bucket
+policy (`AccessDenied`); writing a new archive still succeeded.
+
+> A note on how this was found: Object Lock alone was **not** sufficient.
+> It protects a *version* from deletion, but an overwrite simply creates a
+> newer version that becomes what readers get by default. The original
+> remained recoverable, but a naive read returned tampered content. The
+> bucket policy above is what actually closes it. Configuration was not
+> enough — this only surfaced by attempting the attack.
+
+### Review (§164.308(a)(1)(ii)(D) — regular review)
+
+Run `npm run audit:report` (default 90 days, `--days N` to change). It
+summarises activity by type, failures by actor, and failures by source
+address.
+
+**Cadence: monthly.** The Security Officer, or a delegate, reviews the
+report and records: the date, who reviewed it, and anything followed up on.
+File that note with this document.
+
+Look for: repeated sign-in failures against one account, failures from a
+single unfamiliar address, admin activity outside normal hours, and any
+increase in patient-record reads without a matching business reason.
+
+**An unreviewed log satisfies §164.312(b) but not this requirement.** They
+are separate obligations and are cited separately.
+
+### Operating procedure
+
+| When | Action | Command |
+|---|---|---|
+| Monthly | Review activity and record that you did | `npm run audit:report` |
+| Monthly | Archive the previous month | `npm run audit:archive` |
+| Annually | Confirm archives are present and readable | list the S3 prefix |
+
 ### Still outstanding
 
-- **T-07 retention**: six-year retention and archival, plus a documented
-  periodic review cadence (§164.308(a)(1)(ii)(D)).
 - **T-05 rotation**: a written, tested key-rotation procedure.
 - **All of §5 and §6**: unchanged — these remain the pharmacy's to complete,
   and no technical work substitutes for them.

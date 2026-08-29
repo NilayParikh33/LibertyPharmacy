@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "admin:mfa": "node scripts/admin-mfa-qr.mjs",
-    "db": "node scripts/dev-db.mjs"
+    "db": "node scripts/dev-db.mjs",
+    "audit:report": "node scripts/audit-archive.mjs report",
+    "audit:archive": "node scripts/audit-archive.mjs archive"
   },
   "dependencies": {
     "@aws-sdk/client-sesv2": "^3.1118.0",
