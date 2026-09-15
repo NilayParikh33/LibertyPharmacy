@@ -57,6 +57,9 @@ const fromAddress = sesTransporter ? sesFromEmail! : gmailUser;
  * instead of emailing them, so a deployment with no mail transport can still
  * complete a registration during a walkthrough.
  *
+ * Covers every send path: login/verification codes, password-reset links, and
+ * the contact-form notification.
+ *
  * This is NOT a transport and must never be on when real patients exist:
  *  - Anyone who can read the service logs can read a login code, which
  *    defeats the second factor for as long as that code stays valid.
@@ -68,6 +71,8 @@ const fromAddress = sesTransporter ? sesFromEmail! : gmailUser;
  * Unset it before this deployment carries anything but fake data.
  */
 const demoLogCodes = process.env.DEMO_LOG_OTP_CODES === "true";
+// Name kept for continuity with what is already deployed and documented; the
+// flag governs every send path below, not only the OTP one.
 
 function demoLog(kind: string, to: string, value: string): void {
   console.warn(
@@ -240,6 +245,16 @@ export async function sendContactEmail(_data: ContactMessageInput): Promise<void
 
   if (process.env.NODE_ENV !== "production") {
     console.log(`\n[mail:dev] Contact form notification (no transport configured):\n${text}\n`);
+    return;
+  }
+
+  if (demoLogCodes) {
+    // No code or link to surface here - the notification is deliberately
+    // content-free (details stay encrypted in the admin panel), so this just
+    // records that a submission arrived and where to read it.
+    // `to` falls back to the transport's from address, which is itself unset
+    // when no transport is configured - which is exactly this case.
+    demoLog("contact notification", to ?? "(no recipient configured)", adminUrl);
     return;
   }
 

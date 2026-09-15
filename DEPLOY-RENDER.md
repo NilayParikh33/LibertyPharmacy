@@ -131,9 +131,18 @@ production. For a client walkthrough you can set:
 |---|---|
 | `DEMO_LOG_OTP_CODES` | `true` |
 
-The code is then written to the Render service log (prefixed
-`[DEMO_LOG_OTP_CODES]`) instead of being emailed, so you can read it from the
-dashboard and finish the signup live.
+Whatever would have been emailed is then written to the Render service log
+(prefixed `[DEMO_LOG_OTP_CODES]`), so you can read it from the dashboard and
+finish the signup live. It covers all three send paths:
+
+| Flow | What appears in the log |
+|---|---|
+| Register, login MFA, resend | the 6-digit code |
+| Forgot password | the single-use reset link |
+| Contact form | a note that a message arrived, plus the admin-panel URL |
+
+The contact form works either way — the message is stored before the email is
+attempted, and the notification deliberately carries no message content.
 
 **This is a demo switch, not a transport.** Anyone who can read the service log
 can read a login code while it is valid, which defeats the second factor, and
