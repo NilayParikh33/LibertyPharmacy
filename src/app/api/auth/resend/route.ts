@@ -21,5 +21,6 @@ export async function POST(request: Request) {
       { status: 401 }
     );
   }
-  return NextResponse.json({ ok: true });
+  // demoCode is present only under DEMO_SHOW_OTP_ON_SCREEN (see startMfaChallenge).
+  return NextResponse.json({ ok: true, ...(result.demoCode ? { demoCode: result.demoCode } : {}) });
 }

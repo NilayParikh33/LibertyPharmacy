@@ -192,10 +192,31 @@ export async function loginPatient(
 export type MfaPurpose = "email_verify" | "login_mfa";
 
 /**
+ * DEMO ESCAPE HATCH - hands the freshly issued OTP back to the caller so it
+ * can be displayed in the browser instead of emailed.
+ *
+ * This does not weaken the second factor, it removes it: the code travels in
+ * the API response, so anyone who can reach the endpoint can register an
+ * address they do not control and verify it themselves. There is no
+ * configuration involving real patients in which this is acceptable.
+ *
+ * Opt-in, exact-match "true", and deliberately separate from
+ * DEMO_LOG_OTP_CODES so the log-only behaviour can be used without this one.
+ */
+const demoRevealOtp = process.env.DEMO_SHOW_OTP_ON_SCREEN === "true";
+
+/**
  * Start (or restart) a one-time-code challenge for an account: stores hashed
  * code + pending token, sets the pending cookie, emails the code.
+ *
+ * Returns the plaintext code when DEMO_SHOW_OTP_ON_SCREEN is on, otherwise
+ * null. A non-null result is only ever safe to surface in that demo mode.
  */
-export async function startMfaChallenge(accountId: number, email: string, purpose: MfaPurpose): Promise<void> {
+export async function startMfaChallenge(
+  accountId: number,
+  email: string,
+  purpose: MfaPurpose
+): Promise<string | null> {
   const db = await getDb();
   const token = generateSessionToken();
   const code = generateOtpCode();
@@ -232,6 +253,8 @@ export async function startMfaChallenge(accountId: number, email: string, purpos
       detail: `mail_send_failed: ${err instanceof Error ? err.message : String(err)}`,
     });
   }
+
+  return demoRevealOtp ? code : null;
 }
 
 /** The account+purpose behind the browser's pending cookie, if still valid. */
@@ -293,14 +316,14 @@ export async function completeMfaChallenge(
 }
 
 /** Re-issue the code for the browser's pending challenge (resend button). */
-export async function resendMfaCode(): Promise<{ ok: boolean }> {
+export async function resendMfaCode(): Promise<{ ok: boolean; demoCode?: string }> {
   const pending = await getPendingChallenge();
   if (!pending) return { ok: false };
   const db = await getDb();
   const acct = await db.prepare("SELECT email FROM accounts WHERE id = ?").get<{ email: string }>(pending.accountId);
   if (!acct) return { ok: false };
-  await startMfaChallenge(pending.accountId, acct.email, pending.purpose);
-  return { ok: true };
+  const demoCode = await startMfaChallenge(pending.accountId, acct.email, pending.purpose);
+  return demoCode ? { ok: true, demoCode } : { ok: true };
 }
 
 // ---------------------------------------------------------------------------

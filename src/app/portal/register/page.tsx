@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import PageHero from "@/components/PageHero";
+import { stashDemoOtp } from "@/lib/demo-otp";
 
 /**
  * New patient registration.
@@ -75,6 +76,7 @@ export default function RegisterPage() {
         window.scrollTo({ top: 0, behavior: "smooth" });
         return;
       }
+      stashDemoOtp(data.demoCode);
       router.push("/portal/verify?new=1");
       router.refresh();
     } catch {

@@ -128,6 +128,8 @@ export async function POST(request: Request) {
   }
 
   // Account exists but is NOT active until the emailed code is confirmed.
-  await startMfaChallenge(result.accountId, d.email.trim().toLowerCase(), "email_verify");
-  return NextResponse.json({ ok: true, next: "verify" });
+  // demoCode is non-null only under DEMO_SHOW_OTP_ON_SCREEN (see startMfaChallenge)
+  // and is returned to the browser so a demo can be completed without email.
+  const demoCode = await startMfaChallenge(result.accountId, d.email.trim().toLowerCase(), "email_verify");
+  return NextResponse.json({ ok: true, next: "verify", ...(demoCode ? { demoCode } : {}) });
 }

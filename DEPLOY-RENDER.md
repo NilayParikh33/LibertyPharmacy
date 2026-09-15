@@ -144,6 +144,25 @@ finish the signup live. It covers all three send paths:
 The contact form works either way — the message is stored before the email is
 attempted, and the notification deliberately carries no message content.
 
+### Letting a tester read the code on screen
+
+`DEMO_LOG_OTP_CODES` still requires someone with dashboard access to read the
+log. If the client is testing on their own, set:
+
+| Key | Value |
+|---|---|
+| `DEMO_SHOW_OTP_ON_SCREEN` | `true` |
+
+The code then appears in an amber "Demo mode" banner on the verification
+screen itself, and the tester never touches the Render dashboard. It works for
+registration, login MFA, and Resend.
+
+**This removes the second factor entirely.** The code is returned in the API
+response, so anyone who can reach the site can register an address they do not
+own and verify it themselves. It is acceptable only on a throwaway deployment
+holding fake data, and must never be set where real patients exist. The banner
+says so on screen, deliberately, so nobody mistakes it for normal behaviour.
+
 **This is a demo switch, not a transport.** Anyone who can read the service log
 can read a login code while it is valid, which defeats the second factor, and
 Render retains logs for everyone with dashboard access. Unset it before this
