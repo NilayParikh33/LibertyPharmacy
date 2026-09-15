@@ -17,7 +17,8 @@ import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
  * mail through a non-BAA path once this is deployed for real.
  *
  * Without any transport configured, dev prints codes to the server console
- * and production refuses to send rather than failing silently.
+ * and production refuses to send rather than failing silently - unless
+ * DEMO_LOG_OTP_CODES=true, a demo-only escape hatch documented below.
  *
  * PHI note: OTP messages deliberately contain no health information — just a
  * code. Never add prescription, appointment, or medical content to any email
@@ -50,6 +51,36 @@ const gmailTransporter =
 
 const transporter = sesTransporter ?? gmailTransporter;
 const fromAddress = sesTransporter ? sesFromEmail! : gmailUser;
+
+/**
+ * DEMO ESCAPE HATCH - writes OTP codes and reset links to the server log
+ * instead of emailing them, so a deployment with no mail transport can still
+ * complete a registration during a walkthrough.
+ *
+ * This is NOT a transport and must never be on when real patients exist:
+ *  - Anyone who can read the service logs can read a login code, which
+ *    defeats the second factor for as long as that code stays valid.
+ *  - Hosting-platform logs are retained and readable by everyone with
+ *    dashboard access to the account.
+ *
+ * It is opt-in, exact-match "true", and unreachable whenever a real
+ * transport is configured (those paths return before reaching it).
+ * Unset it before this deployment carries anything but fake data.
+ */
+const demoLogCodes = process.env.DEMO_LOG_OTP_CODES === "true";
+
+function demoLog(kind: string, to: string, value: string): void {
+  console.warn(
+    [
+      "",
+      `[DEMO_LOG_OTP_CODES] Mail is not configured; ${kind} written to the log instead of being sent.`,
+      `[DEMO_LOG_OTP_CODES] To: ${to}`,
+      `[DEMO_LOG_OTP_CODES] ${kind}: ${value}`,
+      "[DEMO_LOG_OTP_CODES] Demo use only - unset this variable before real patient data exists.",
+      "",
+    ].join("\n")
+  );
+}
 
 /**
  * Sent from a no-reply address on the pharmacy's own domain — a domain
@@ -105,6 +136,11 @@ export async function sendOtpEmail(
     return;
   }
 
+  if (demoLogCodes) {
+    demoLog("verification code", to, code);
+    return;
+  }
+
   throw new Error("Email transport not configured — cannot send verification codes in production.");
 }
 
@@ -134,6 +170,11 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
 
   if (process.env.NODE_ENV !== "production") {
     console.log(`\n[mail:dev] To: ${to}\n[mail:dev] Subject: ${subject}\n[mail:dev] Reset link: ${resetUrl}\n`);
+    return;
+  }
+
+  if (demoLogCodes) {
+    demoLog("reset link", to, resetUrl);
     return;
   }
 

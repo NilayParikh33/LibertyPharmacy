@@ -122,6 +122,25 @@ authentication from outside AWS would mean granting that same static key
 AWS key. Password auth over a verified TLS connection is the simpler honest
 choice for this deployment target.
 
+### Completing a registration without SES (demo only)
+
+Registration sends an OTP, so with no mail transport configured it fails in
+production. For a client walkthrough you can set:
+
+| Key | Value |
+|---|---|
+| `DEMO_LOG_OTP_CODES` | `true` |
+
+The code is then written to the Render service log (prefixed
+`[DEMO_LOG_OTP_CODES]`) instead of being emailed, so you can read it from the
+dashboard and finish the signup live.
+
+**This is a demo switch, not a transport.** Anyone who can read the service log
+can read a login code while it is valid, which defeats the second factor, and
+Render retains logs for everyone with dashboard access. Unset it before this
+deployment holds anything but fake data, and configure SES instead. It is
+ignored whenever a real transport is configured.
+
 ### The Gmail fallback is not available
 
 `.env.example` documents `GMAIL_USER` / `GMAIL_APP_PASSWORD` as a pre-production
