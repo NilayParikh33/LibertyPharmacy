@@ -32,6 +32,7 @@ export async function POST(request: Request) {
   // Password alone never grants a session. Unverified accounts must first
   // activate via the emailed code; verified accounts get a login MFA code.
   const purpose = result.emailVerified ? "login_mfa" : "email_verify";
-  await startMfaChallenge(result.accountId, result.email, purpose);
-  return NextResponse.json({ ok: true, next: "verify", purpose });
+  // demoCode is non-null only under DEMO_SHOW_OTP_ON_SCREEN (see startMfaChallenge).
+  const demoCode = await startMfaChallenge(result.accountId, result.email, purpose);
+  return NextResponse.json({ ok: true, next: "verify", purpose, ...(demoCode ? { demoCode } : {}) });
 }

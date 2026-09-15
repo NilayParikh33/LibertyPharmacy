@@ -1,0 +1,154 @@
+# ---------------------------------------------------------------------------
+# Liberty Pharmacy — Render Blueprint
+#
+# Render reads this file from the repo root and provisions the service(s)
+# below. To use it:
+#
+#   1. Render dashboard -> New + -> Blueprint
+#   2. Connect the GitHub account and select this repository. For a PRIVATE
+#      repo, the Render GitHub App must be granted access to it explicitly
+#      (GitHub -> Settings -> Applications -> Render -> Configure).
+#   3. Render reads this file and shows the service it will create, plus a
+#      form for every variable marked `sync: false` below.
+#   4. Fill those in and click Apply.
+#
+# Values marked `sync: false` are SECRETS. They are deliberately NOT stored in
+# this file or in git — Render prompts for them once at deploy time and keeps
+# them encrypted. Never replace a `sync: false` with a literal value here.
+#
+# NOTE ON HIPAA: Render signs a BAA only on their Enterprise plan. The plan
+# selected below is suitable for staging, demo, and the current no-PHI site.
+# Before any real patient data is stored or transmitted, either move to an
+# Enterprise plan with a signed BAA or deploy to the AWS path described in
+# HIPAA-COMPLIANCE.md. See also the DATABASE_URL notes below.
+# ---------------------------------------------------------------------------
+
+services:
+  - type: web
+    name: liberty-pharmacy
+    runtime: docker
+
+    # The repo's Dockerfile does a multi-stage build against Next.js
+    # `output: "standalone"`, so the runtime image ships only traced deps.
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+
+    # `dev` is the active development branch and is ahead of `main`.
+    # Point this at `main` once the release branch is promoted.
+    branch: dev
+
+    region: ohio          # closest US region to Austin, TX
+    plan: starter         # upgrade before production traffic
+    autoDeploy: true      # redeploy on every push to the branch above
+
+    healthCheckPath: /
+
+    envVars:
+      # -- Public origin ---------------------------------------------------
+      # Required in production: behind Render's proxy the request origin is an
+      # internal address, which would email patients unreachable reset links.
+      # Update this to the custom domain once DNS is cut over.
+      - key: APP_BASE_URL
+        sync: false
+
+      # -- Database --------------------------------------------------------
+      # A database is REQUIRED for the site to serve any page at all: the root
+      # layout reads site settings from it (getSiteSettings in src/lib/site.ts),
+      # so without one every route errors.
+      #
+      # This wires the app to the Render-managed Postgres declared at the
+      # bottom of this file, so the Blueprint stands up a working site with no
+      # external dependencies. To use Amazon RDS instead, see the note there.
+      # The schema needs no migration step — it is created on first connection
+      # (CREATE TABLE IF NOT EXISTS, in init() in src/lib/db.ts).
+      - key: DATABASE_URL
+        fromDatabase:
+          name: liberty-db
+          property: connectionString
+
+      # >>> DEMO SETTING — MUST CHANGE BEFORE ANY PATIENT DATA <<<
+      # "require" encrypts the database connection but does not verify the
+      # server's certificate, so it stops passive eavesdropping but not an
+      # active MITM. That does not meet the transmission-security bar in
+      # HIPAA-COMPLIANCE.md. It is used here only because it connects to a
+      # managed Postgres regardless of how its certificate is signed, which is
+      # what makes this blueprint apply cleanly on the first try.
+      #
+      # Before this deployment handles PHI, switch to:
+      #   verify-public  - managed Postgres with a publicly-trusted cert
+      #   verify-ca      - Amazon RDS (also set RDS_CA_BUNDLE_PATH below)
+      # See DB_SSL_MODE in .env.example for what each mode guarantees.
+      - key: DB_SSL_MODE
+        value: require
+
+      # Only used when DB_SSL_MODE=verify-ca (i.e. when pointing at RDS). The
+      # bundle is a public certificate committed under certs/ and copied into
+      # the image by the Dockerfile. Harmless to leave set in other modes.
+      - key: RDS_CA_BUNDLE_PATH
+        value: ./certs/rds-global-bundle.pem
+
+      # -- PHI encryption --------------------------------------------------
+      # 32-byte hex key for AES-256-GCM field-level encryption at rest.
+      # Generate with: openssl rand -hex 32
+      # Rotating this requires re-encrypting existing patient rows.
+      - key: PHI_ENCRYPTION_KEY
+        sync: false
+
+      # -- Email (Amazon SES) ----------------------------------------------
+      # SES is the required transport in production — OTP codes and password
+      # reset links both go through it. The Gmail fallback in .env.example is
+      # refused when NODE_ENV=production, so it is intentionally absent here.
+      - key: SES_FROM_EMAIL
+        sync: false
+      - key: AWS_REGION
+        value: us-east-1
+      # Render is not AWS compute, so there is no instance role to inherit —
+      # SES needs a dedicated IAM user's keys scoped to ses:SendEmail only.
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+
+      # Where the no-PHI general contact form is delivered.
+      - key: CONTACT_FORWARD_EMAIL
+        sync: false
+
+      # -- Admin panel -----------------------------------------------------
+      # Bootstraps the FIRST admin account, and only while the admin_users
+      # table is empty (src/lib/admin-auth.ts seedFirstAdmin). Once any admin
+      # exists these are ignored entirely and users are managed in the DB.
+      # All three must be set or no admin is seeded and nobody can log in.
+      #
+      # ADMIN_TOTP_SECRET is a base32 TOTP seed, stored encrypted under
+      # PHI_ENCRYPTION_KEY. Generate the seed and its enrolment QR code with:
+      #   npm run admin:mfa
+      # NOTE: .env.example omits ADMIN_TOTP_SECRET and instead documents an
+      # ADMIN_SESSION_SECRET that no code reads — the template is stale here.
+      # The three keys below are what the app actually looks for.
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ADMIN_TOTP_SECRET
+        sync: false
+
+# ---------------------------------------------------------------------------
+# Render-managed Postgres, wired to DATABASE_URL above.
+#
+# This is the default so that applying the Blueprint produces a working site
+# without provisioning anything on AWS first. It is appropriate for the demo,
+# staging, and the current public site, which collects no PHI by design.
+#
+# To use Amazon RDS instead (the path documented in HIPAA-COMPLIANCE.md):
+#   1. Delete this `databases:` block.
+#   2. Replace the `fromDatabase:` DATABASE_URL above with `sync: false` and
+#      supply the RDS connection string in the dashboard.
+#   3. Set DB_SSL_MODE to verify-ca.
+# ---------------------------------------------------------------------------
+
+databases:
+  - name: liberty-db
+    databaseName: liberty
+    user: appuser
+    region: ohio      # must match the service's region above
+    plan: basic-256mb

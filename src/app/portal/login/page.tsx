@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import PageHero from "@/components/PageHero";
+import { stashDemoOtp } from "@/lib/demo-otp";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -29,6 +30,7 @@ export default function LoginPage() {
         setError(data.error ?? "Unable to sign in. Please try again.");
         return;
       }
+      stashDemoOtp(data.demoCode);
       router.push("/portal/verify");
       router.refresh();
     } catch {
