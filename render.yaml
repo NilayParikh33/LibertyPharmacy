@@ -52,14 +52,38 @@ services:
         sync: false
 
       # -- Database --------------------------------------------------------
-      # The app is built against Amazon RDS for PostgreSQL (see the `databases`
-      # note at the bottom of this file if the client prefers Render Postgres).
+      # A database is REQUIRED for the site to serve any page at all: the root
+      # layout reads site settings from it (getSiteSettings in src/lib/site.ts),
+      # so without one every route errors.
+      #
+      # This wires the app to the Render-managed Postgres declared at the
+      # bottom of this file, so the Blueprint stands up a working site with no
+      # external dependencies. To use Amazon RDS instead, see the note there.
+      # The schema needs no migration step — it is created on first connection
+      # (CREATE TABLE IF NOT EXISTS, in init() in src/lib/db.ts).
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: liberty-db
+          property: connectionString
 
-      # Verifies the RDS server certificate. The bundle is a public cert and
-      # is committed under certs/, copied into the image by the Dockerfile.
-      # LEAVE THIS UNSET if DATABASE_URL points at Render Postgres instead.
+      # >>> DEMO SETTING — MUST CHANGE BEFORE ANY PATIENT DATA <<<
+      # "require" encrypts the database connection but does not verify the
+      # server's certificate, so it stops passive eavesdropping but not an
+      # active MITM. That does not meet the transmission-security bar in
+      # HIPAA-COMPLIANCE.md. It is used here only because it connects to a
+      # managed Postgres regardless of how its certificate is signed, which is
+      # what makes this blueprint apply cleanly on the first try.
+      #
+      # Before this deployment handles PHI, switch to:
+      #   verify-public  - managed Postgres with a publicly-trusted cert
+      #   verify-ca      - Amazon RDS (also set RDS_CA_BUNDLE_PATH below)
+      # See DB_SSL_MODE in .env.example for what each mode guarantees.
+      - key: DB_SSL_MODE
+        value: require
+
+      # Only used when DB_SSL_MODE=verify-ca (i.e. when pointing at RDS). The
+      # bundle is a public certificate committed under certs/ and copied into
+      # the image by the Dockerfile. Harmless to leave set in other modes.
       - key: RDS_CA_BUNDLE_PATH
         value: ./certs/rds-global-bundle.pem
 
@@ -109,26 +133,22 @@ services:
         sync: false
 
 # ---------------------------------------------------------------------------
-# OPTIONAL — Render-managed Postgres instead of Amazon RDS.
+# Render-managed Postgres, wired to DATABASE_URL above.
 #
-# Uncomment the block below AND, in the service above, replace the
-# `DATABASE_URL` entry with the `fromDatabase` form shown here, then delete
-# the RDS_CA_BUNDLE_PATH entry (Render Postgres presents its own certificate
-# chain, not Amazon's).
+# This is the default so that applying the Blueprint produces a working site
+# without provisioning anything on AWS first. It is appropriate for the demo,
+# staging, and the current public site, which collects no PHI by design.
 #
-#   - key: DATABASE_URL
-#     fromDatabase:
-#       name: liberty-db
-#       property: connectionString
-#
-# databases:
-#   - name: liberty-db
-#     databaseName: liberty
-#     user: appuser
-#     region: ohio
-#     plan: basic-256mb
-#
-# Trade-off: this is simpler to stand up, but it drops the IAM-auth and
-# customer-managed-key posture documented in HIPAA-COMPLIANCE.md. Suitable for
-# demo and staging; revisit before storing real patient records.
+# To use Amazon RDS instead (the path documented in HIPAA-COMPLIANCE.md):
+#   1. Delete this `databases:` block.
+#   2. Replace the `fromDatabase:` DATABASE_URL above with `sync: false` and
+#      supply the RDS connection string in the dashboard.
+#   3. Set DB_SSL_MODE to verify-ca.
 # ---------------------------------------------------------------------------
+
+databases:
+  - name: liberty-db
+    databaseName: liberty
+    user: appuser
+    region: ohio      # must match the service's region above
+    plan: basic-256mb

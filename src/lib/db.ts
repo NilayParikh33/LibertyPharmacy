@@ -23,7 +23,9 @@ types.setTypeParser(20, (val) => parseInt(val, 10));
  *  - TLS is verified against Amazon's own CA bundle (`RDS_CA_BUNDLE_PATH`),
  *    not just "encrypted but unverified" — RDS server certs chain to Amazon's
  *    CA, which isn't in Node's default trust store, so skipping verification
- *    would accept any certificate a MITM presented.
+ *    would accept any certificate a MITM presented. `DB_SSL_MODE` can relax
+ *    this for a non-RDS managed Postgres (demo/staging only — see
+ *    `resolveSsl` below for what each mode does and does not guarantee).
  *  - `DB_AUTH_MODE=iam` swaps the static DB password for a 15-minute IAM
  *    auth token (via `@aws-sdk/rds-signer`), so there's no long-lived DB
  *    credential to leak — requires IAM DB auth enabled on the instance and
@@ -113,19 +115,58 @@ class AppDb {
   }
 }
 
-function resolveSsl(connectionString: string): boolean | { ca: string; rejectUnauthorized: true } {
+function resolveSsl(
+  connectionString: string
+): boolean | { ca: string; rejectUnauthorized: true } | { rejectUnauthorized: boolean } {
   const isLocal = connectionString.includes("localhost") || connectionString.includes("127.0.0.1");
   if (isLocal) return false; // local dev Postgres typically doesn't speak TLS at all
 
-  const caBundlePath = process.env.RDS_CA_BUNDLE_PATH;
-  if (!caBundlePath) {
-    throw new Error(
-      "RDS_CA_BUNDLE_PATH is not set — download Amazon's RDS CA bundle and point this at it " +
-        "(see .env.example) before connecting to a non-local database."
-    );
+  // DB_SSL_MODE selects how the server certificate is trusted. The default
+  // (unset) is the strictest option and the only one used against RDS.
+  switch (process.env.DB_SSL_MODE ?? "verify-ca") {
+    // Pin to a specific CA bundle. Required for RDS: its server certs chain
+    // to Amazon's own CA, which is absent from Node's default trust store, so
+    // verifying against the system store alone would reject a valid RDS cert
+    // (and skipping verification would accept any cert a MITM presented).
+    case "verify-ca": {
+      const caBundlePath = process.env.RDS_CA_BUNDLE_PATH;
+      if (!caBundlePath) {
+        throw new Error(
+          "RDS_CA_BUNDLE_PATH is not set — download Amazon's RDS CA bundle and point this at it " +
+            "(see .env.example) before connecting to a non-local database. If this database is " +
+            "not RDS, set DB_SSL_MODE (see .env.example) to match how its certificate is signed."
+        );
+      }
+      return { ca: readFileSync(caBundlePath, "utf8"), rejectUnauthorized: true };
+    }
+
+    // Verify against Node's built-in trust store, for a managed Postgres whose
+    // certificate is signed by a publicly trusted CA. Still fully verified —
+    // it just isn't pinned to one issuer.
+    case "verify-public":
+      return { rejectUnauthorized: true };
+
+    // Encrypt but do NOT verify the server certificate. This stops passive
+    // eavesdropping but not an active MITM, so it does not meet the
+    // transmission-security bar in HIPAA-COMPLIANCE.md. Acceptable only for a
+    // demo/staging database holding no patient data.
+    case "require":
+      return { rejectUnauthorized: false };
+
+    // No TLS at all. Only defensible when the database is reachable solely
+    // over a private network the provider terminates (e.g. a platform-internal
+    // hostname), never across the public internet, and never with PHI.
+    case "disable":
+      return false;
+
+    default:
+      throw new Error(
+        `DB_SSL_MODE="${process.env.DB_SSL_MODE}" is not recognised — ` +
+          'use "verify-ca" (default), "verify-public", "require", or "disable".'
+      );
   }
-  return { ca: readFileSync(caBundlePath, "utf8"), rejectUnauthorized: true };
 }
+
 
 /** IAM auth token as the DB password: minted fresh (15 min TTL) each time a
  * new physical connection is opened by the pool, via the app's own AWS

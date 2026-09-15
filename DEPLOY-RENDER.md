@@ -21,9 +21,12 @@ each value comes from.
 |---|---|
 | A Render account | Hosts the service |
 | Access to the GitHub repository | Render pulls the code from it |
-| An Amazon RDS PostgreSQL instance | The app's database (or use Render Postgres — see [step 6](#6-optional-use-render-postgres-instead-of-rds)) |
-| Amazon SES in production mode | Sends OTP codes and password-reset mail |
+| Amazon SES in production mode | Only for mail — OTP codes, password resets, contact-form delivery. Not needed to bring the site up. |
 | A terminal with Node 20+ and `openssl` | Generates the two secrets in [step 4](#4-fill-in-the-environment-variables) |
+
+No database setup is required: the Blueprint provisions a Render-managed
+PostgreSQL instance and wires it up automatically. See
+[step 6](#6-using-amazon-rds-instead) to point at Amazon RDS instead.
 
 ## 2. Give Render access to the private repository
 
@@ -54,25 +57,56 @@ the service it is about to create: a Docker web service named
 > branch. For a client-facing production deploy, change `branch: dev` to
 > `branch: main` and promote the release to `main` first.
 
+It also creates a PostgreSQL instance named `liberty-db` and injects its
+connection string as `DATABASE_URL`. **A database is not optional:** the root
+layout reads site settings from it on every request (`getSiteSettings` in
+`src/lib/site.ts`), so without one every route returns an error.
+
 Render then presents a form listing every variable marked `sync: false`. These
-are the secrets — they are deliberately not stored in the repository. Fill them
-in as described next, then click **Apply**.
+are the secrets — they are deliberately not stored in the repository.
+
+**To get the site up, none of them are required.** Leave them blank and the
+public pages render fine; the features that depend on them stay inert until you
+fill them in and redeploy:
+
+| Left blank | What stops working |
+|---|---|
+| `PHI_ENCRYPTION_KEY` | Patient registration/login and admin login |
+| `SES_FROM_EMAIL`, `AWS_*` | All outbound email — OTP codes, password resets |
+| `CONTACT_FORWARD_EMAIL` | Contact-form messages are stored but not emailed |
+| `ADMIN_*` | No admin account is created |
+| `APP_BASE_URL` | Password-reset emails may carry unreachable links |
+
+Fill in what you need, then click **Apply**.
 
 ## 4. Fill in the environment variables
 
 | Variable | Where the value comes from |
 |---|---|
-| `APP_BASE_URL` | The site's public URL. Use the `onrender.com` URL at first, then update to the custom domain after [step 7](#7-add-the-custom-domain). Required — behind Render's proxy the app cannot infer its own origin, and password-reset emails would carry unreachable links. |
-| `DATABASE_URL` | The RDS connection string, e.g. `postgres://appuser:PASSWORD@<db-id>.<region>.rds.amazonaws.com:5432/liberty` |
+| `APP_BASE_URL` | The site's public URL. Use the `onrender.com` URL at first, then update to the custom domain after [step 7](#7-add-the-custom-domain). Only used to build links in outbound email — behind Render's proxy the app cannot infer its own origin, so leaving it blank can mean unreachable password-reset links. |
 | `PHI_ENCRYPTION_KEY` | Generate with `openssl rand -hex 32`. **Store it in a password manager.** Rotating it later requires re-encrypting every existing patient row. |
 | `SES_FROM_EMAIL` | The SES-verified sending address, e.g. `noreply@libertypharmacyatx.com` |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | An IAM user scoped to **`ses:SendEmail` only** — see the note below. |
 | `CONTACT_FORWARD_EMAIL` | The monitored inbox that receives general contact-form enquiries. |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `ADMIN_TOTP_SECRET` | Bootstraps the first admin — see [step 5](#5-bootstrap-the-admin-account). |
 
-Two variables are already set to literal values in `render.yaml` and need no
-input: `AWS_REGION` (`us-east-1`) and `RDS_CA_BUNDLE_PATH`, which points at the
-public Amazon RDS certificate bundle committed under `certs/`.
+`DATABASE_URL` is not in that list — Render fills it in from the `liberty-db`
+instance it creates. `AWS_REGION`, `RDS_CA_BUNDLE_PATH`, and `DB_SSL_MODE` are
+set to literal values in `render.yaml` and need no input.
+
+### `DB_SSL_MODE=require` is a demo setting
+
+`render.yaml` sets `DB_SSL_MODE=require`, which encrypts the database
+connection but does **not** verify the server's certificate. That stops passive
+eavesdropping but not an active machine-in-the-middle, so it does not meet the
+transmission-security bar in `HIPAA-COMPLIANCE.md`.
+
+It is the default here for one reason: it connects to a managed Postgres
+regardless of how that provider signs its certificates, which is what lets this
+Blueprint apply cleanly on the first attempt. Before the deployment handles any
+patient data, change it to `verify-public` (managed Postgres with a
+publicly-trusted certificate) or `verify-ca` (Amazon RDS). The modes are
+documented in `.env.example`.
 
 ### Why static AWS keys here
 
@@ -124,21 +158,22 @@ How the bootstrap behaves, from `seedFirstAdmin` in
 > `ADMIN_SESSION_SECRET` that no code reads, and omits `ADMIN_TOTP_SECRET`,
 > which the app does read. The three variables above are the correct set.
 
-## 6. Optional: use Render Postgres instead of RDS
+## 6. Using Amazon RDS instead
 
-`render.yaml` ends with a commented-out `databases:` block. Uncommenting it, and
-following the instructions in that comment, provisions a Render-managed
-PostgreSQL instance and wires `DATABASE_URL` to it automatically — noticeably
-simpler to stand up.
+The Blueprint provisions Render Postgres by default so that applying it yields a
+working site with no AWS prerequisites. To use Amazon RDS — the path documented
+in `HIPAA-COMPLIANCE.md` — edit `render.yaml`:
 
-The trade-off is that it drops the RDS posture documented in
-`HIPAA-COMPLIANCE.md`. Reasonable for demo and staging; revisit before real
-patient records exist.
+1. Delete the `databases:` block at the bottom.
+2. Replace the `fromDatabase:` form of `DATABASE_URL` with `sync: false`, and
+   supply the RDS connection string in the dashboard.
+3. Set `DB_SSL_MODE` to `verify-ca`, which pins TLS to the Amazon CA bundle
+   already committed under `certs/`.
 
 **There is no migration step either way.** The schema is created on demand: the
 first request that touches the database runs `CREATE TABLE IF NOT EXISTS` for
 every table (`init` in [`src/lib/db.ts`](src/lib/db.ts)). An empty database is a
-valid starting point.
+valid starting point, and the first page load will populate it.
 
 ## 7. Add the custom domain
 
@@ -160,6 +195,8 @@ After the first deploy finishes:
 - [ ] Admin login works, including the TOTP prompt.
 - [ ] Patient registration sends an OTP email through SES (SES must be out of
       sandbox mode, or it can only send to pre-verified addresses).
+
+The last three only apply once you have filled in the corresponding secrets.
 
 ## 9. Ongoing deploys
 
@@ -185,6 +222,9 @@ that cannot be fixed later by editing a config file:
   headers — are in place and work on Render. They are necessary, not sufficient.
 - The current public site collects no PHI by design, which is what makes this
   deployment target acceptable today.
+- `DB_SSL_MODE=require` and the Render-managed database are both demo-grade
+  choices, made so the Blueprint applies on the first try. Both need revisiting
+  before patient data exists — see step 4 and step 6.
 
 Before this deployment handles patient data, work through the checklist in
 [HIPAA-COMPLIANCE.md](HIPAA-COMPLIANCE.md) — in particular the BAA requirements
