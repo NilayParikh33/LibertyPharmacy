@@ -70,7 +70,8 @@ export default function ProductCatalog({ phone, phoneHref }: { phone: string; ph
 
       {activeBlurb && (
         // key forces a re-mount so the blurb re-animates on every filter change.
-        <p key={activeCategory} className="lp-enter mt-6 text-center text-sm text-slate-600">
+        // Prefixed because the grid below is a sibling keyed on the same value.
+        <p key={`blurb-${activeCategory}`} className="lp-enter mt-6 text-center text-sm text-slate-600">
           {activeBlurb}
         </p>
       )}
@@ -80,7 +81,7 @@ export default function ProductCatalog({ phone, phoneHref }: { phone: string; ph
        * animation replays for the new set.
        */}
       <div
-        key={activeCategory}
+        key={`grid-${activeCategory}`}
         className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3"
         aria-live="polite"
       >
