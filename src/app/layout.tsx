@@ -28,6 +28,19 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const site = await getSiteSettings();
   return (
     <html lang="en">
+      <head>
+        {/* Scroll-reveal hides elements until IntersectionObserver reveals them.
+            With JavaScript off nothing would ever reveal, so force the visible
+            state. See the motion system in globals.css. */}
+        <noscript>
+          {/* eslint-disable-next-line react/no-danger */}
+          <style
+            dangerouslySetInnerHTML={{
+              __html: ".lp-reveal{opacity:1!important;transform:none!important;animation:none!important}",
+            }}
+          />
+        </noscript>
+      </head>
       <body className="flex min-h-screen flex-col">
         <Header siteName={site.name} />
         <main className="flex-1">{children}</main>

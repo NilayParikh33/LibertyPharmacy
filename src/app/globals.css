@@ -34,3 +34,110 @@
     @apply block w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 shadow-sm focus:border-navy-500 focus:outline-none focus:ring-1 focus:ring-navy-500;
   }
 }
+
+/* ===========================================================================
+ * Motion system
+ *
+ * Pure CSS + IntersectionObserver — deliberately no animation library.
+ * The CSP (next.config.mjs) allows scripts only from 'self', and this site
+ * loads no third-party JS by design (see HIPAA-COMPLIANCE.md), so motion is
+ * kept dependency-free.
+ *
+ * ACCESSIBILITY CONTRACT:
+ *  - Every animation below is disabled under prefers-reduced-motion.
+ *  - Scroll-reveal hides content until observed, so a <noscript> override in
+ *    layout.tsx and a no-IntersectionObserver fallback in Reveal.tsx both
+ *    force the visible state. Content is never permanently hidden by motion.
+ * ======================================================================== */
+
+@keyframes lp-fade-up {
+  from { opacity: 0; transform: translate3d(0, 24px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes lp-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes lp-scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes lp-slide-up {
+  from { opacity: 0; transform: translate3d(0, 12px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+
+@layer components {
+  /* --- Scroll reveal ------------------------------------------------------
+   * .lp-reveal starts hidden; Reveal.tsx flips data-revealed once the element
+   * enters the viewport. --lp-delay staggers siblings in a grid.
+   */
+  .lp-reveal {
+    opacity: 0;
+    will-change: opacity, transform;
+  }
+  .lp-reveal[data-revealed="true"] {
+    animation: lp-fade-up 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: var(--lp-delay, 0ms);
+  }
+  .lp-reveal-fade[data-revealed="true"] { animation-name: lp-fade-in; }
+  .lp-reveal-scale[data-revealed="true"] { animation-name: lp-scale-in; }
+
+  /* Entrance animations that run immediately (above-the-fold hero content). */
+  .lp-enter {
+    animation: lp-fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: var(--lp-delay, 0ms);
+  }
+
+  /* --- Interactive affordances ------------------------------------------ */
+  /* Lift-on-hover for clickable cards. Pairs with .card. */
+  .lp-lift {
+    transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+                box-shadow 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+                border-color 0.25s ease;
+  }
+  .lp-lift:hover {
+    transform: translateY(-4px);
+    @apply border-navy-200 shadow-lg;
+  }
+  .lp-lift:focus-visible {
+    @apply outline outline-2 outline-offset-2 outline-navy-700;
+  }
+
+  /* Animated underline for text links. */
+  .lp-underline {
+    background-image: linear-gradient(currentColor, currentColor);
+    background-position: 0 100%;
+    background-repeat: no-repeat;
+    background-size: 0% 1.5px;
+    transition: background-size 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .lp-underline:hover { background-size: 100% 1.5px; }
+
+  /* --- Modal / overlay --------------------------------------------------- */
+  .lp-backdrop { animation: lp-fade-in 0.2s ease-out both; }
+  .lp-panel { animation: lp-scale-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .lp-panel-item { animation: lp-slide-up 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
+}
+
+/* --- Reduced motion --------------------------------------------------------
+ * Honour the OS setting: no movement, no fades, nothing hidden. Many of our
+ * patients use accessibility settings, so this is a hard requirement.
+ */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+
+  .lp-reveal,
+  .lp-reveal[data-revealed="true"],
+  .lp-enter,
+  .lp-backdrop,
+  .lp-panel,
+  .lp-panel-item {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .lp-lift { transition: none; }
+  .lp-lift:hover { transform: none; }
+  .lp-underline { transition: none; background-size: 0% 1.5px; }
+}

@@ -26,6 +26,7 @@ npm run build    # production build
 | `/` | Home — hero, highlights, services preview, visit CTA |
 | `/about` | Story, values |
 | `/services` | Full services grid |
+| `/products` | Product catalog — category filter, click any card for full details (`src/lib/products.ts`) |
 | `/providers` | Compounding programs for physicians/clinics |
 | `/blog`, `/blog/[slug]` | Static blog (swap `src/lib/posts.ts` for a CMS later) |
 | `/locations` | Address, hours, map link |
@@ -41,6 +42,22 @@ PHI-screening contact endpoint, and a no-tracking policy are built in.
 Read **[HIPAA-COMPLIANCE.md](HIPAA-COMPLIANCE.md)** before changing forms,
 adding scripts, or starting the DRX integration — it contains the full
 operational checklist (BAAs, hosting, NPP review, CSP tightening).
+
+## Motion & animation
+
+Animations are **pure CSS + IntersectionObserver — no animation library**, so
+nothing is added to the CSP and no third-party JS is loaded.
+
+- `src/app/globals.css` — keyframes and the `.lp-*` utility classes
+  (`lp-reveal`, `lp-enter`, `lp-lift`, `lp-underline`, `lp-panel`)
+- `src/components/Reveal.tsx` — scroll-reveal wrapper; pass `delay={i * 80}` to
+  stagger a grid
+- `src/components/AnimatedCounter.tsx` — count-up statistics
+
+Every animation is disabled under `prefers-reduced-motion`. Scroll-revealed
+content is force-shown by a `<noscript>` style in `src/app/layout.tsx` and by a
+fallback in `Reveal.tsx`, so **motion can never leave content invisible** —
+keep that guarantee if you add new effects.
 
 ## DRX integration (future)
 
