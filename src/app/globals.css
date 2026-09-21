@@ -67,6 +67,58 @@
   to   { opacity: 1; transform: none; }
 }
 
+/* Illustration motion (PharmacyHeroArt / DeliveryArt). Ambient loops, so they
+ * are gentle and slow — nothing here flashes or moves faster than ~1s/cycle. */
+@keyframes lp-float {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+  50%      { transform: translate3d(0, -10px, 0) rotate(4deg); }
+}
+@keyframes lp-ring {
+  0%   { transform: scale(1); opacity: 0.45; }
+  100% { transform: scale(1.75); opacity: 0; }
+}
+@keyframes lp-beat {
+  0%, 40%, 100% { transform: scale(1); }
+  10%           { transform: scale(1.07); }
+  22%           { transform: scale(1.02); }
+  30%           { transform: scale(1.05); }
+}
+@keyframes lp-pulse-line {
+  from { stroke-dashoffset: 0.25; }
+  to   { stroke-dashoffset: -1; }
+}
+@keyframes lp-twinkle {
+  0%, 100% { opacity: 0.15; transform: scale(0.5); }
+  50%      { opacity: 0.9; transform: scale(1); }
+}
+@keyframes lp-drive {
+  from { transform: translate3d(-170px, 0, 0); }
+  to   { transform: translate3d(620px, 0, 0); }
+}
+@keyframes lp-bump {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50%      { transform: translate3d(0, -1.5px, 0); }
+}
+@keyframes lp-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes lp-road {
+  to { stroke-dashoffset: -44; }
+}
+@keyframes lp-drift {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50%      { transform: translate3d(48px, 0, 0); }
+}
+@keyframes lp-speed {
+  0%   { opacity: 0; transform: translate3d(8px, 0, 0); }
+  40%  { opacity: 0.7; }
+  100% { opacity: 0; transform: translate3d(-14px, 0, 0); }
+}
+@keyframes lp-sheen {
+  from { transform: translate3d(-120%, 0, 0); }
+  to   { transform: translate3d(220%, 0, 0); }
+}
+
 @layer components {
   /* --- Scroll reveal ------------------------------------------------------
    * .lp-reveal starts hidden; Reveal.tsx flips data-revealed once the element
@@ -118,6 +170,103 @@
   .lp-backdrop { animation: lp-fade-in 0.2s ease-out both; }
   .lp-panel { animation: lp-scale-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both; }
   .lp-panel-item { animation: lp-slide-up 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+  /* --- Illustrations ----------------------------------------------------- */
+  /* transform-box makes CSS transforms on SVG parts pivot around their own
+   * centre instead of the SVG's top-left corner. */
+  .lp-art * { transform-box: fill-box; transform-origin: center; }
+
+  .lp-float      { animation: lp-float 5s ease-in-out infinite; }
+  .lp-float-b    { animation: lp-float 6.5s ease-in-out -1.5s infinite; }
+  .lp-float-c    { animation: lp-float 4.2s ease-in-out -3s infinite; }
+  .lp-ring       { animation: lp-ring 3.2s ease-out infinite; }
+  .lp-ring-b     { animation: lp-ring 3.2s ease-out 1.6s infinite; }
+  .lp-beat       { animation: lp-beat 2.4s ease-in-out infinite; }
+  .lp-pulse-line {
+    stroke-dasharray: 0.25 0.75;
+    animation: lp-pulse-line 3s linear infinite;
+  }
+  .lp-twinkle    { animation: lp-twinkle 3s ease-in-out infinite; }
+  .lp-twinkle-b  { animation: lp-twinkle 3s ease-in-out -1s infinite; }
+  .lp-twinkle-c  { animation: lp-twinkle 3s ease-in-out -2s infinite; }
+  .lp-drive      { animation: lp-drive 9s linear infinite; }
+  .lp-bump       { animation: lp-bump 0.5s ease-in-out infinite; }
+  .lp-wheel      { animation: lp-spin 0.7s linear infinite; }
+  .lp-road       { animation: lp-road 0.9s linear infinite; }
+  .lp-drift      { animation: lp-drift 14s ease-in-out infinite; }
+  .lp-drift-b    { animation: lp-drift 18s ease-in-out -6s infinite; }
+  .lp-speed      { animation: lp-speed 0.9s ease-out infinite; }
+  .lp-speed-b    { animation: lp-speed 0.9s ease-out 0.3s infinite; }
+  .lp-speed-c    { animation: lp-speed 0.9s ease-out 0.6s infinite; }
+
+  /* --- Product media -----------------------------------------------------
+   * Slow zoom on the product image while its card is hovered or focused.
+   * Put .lp-media on the clipping frame and .lp-media-img on the <img> (or on
+   * the icon tile used until real product photography exists).
+   */
+  .lp-media { overflow: hidden; }
+  .lp-media-img {
+    transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .group:hover .lp-media-img,
+  .group:focus-visible .lp-media-img {
+    transform: scale(1.07);
+  }
+
+  /* One-pass highlight sweep across a tile, on hover only. The sheen element
+   * is a skewed white gradient that starts and ends outside the frame. */
+  .lp-sheen::after {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 45%;
+    transform: translate3d(-120%, 0, 0) skewX(-18deg);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+    pointer-events: none;
+  }
+  .lp-sheen:hover::after,
+  .lp-sheen:focus-visible::after {
+    animation: lp-sheen 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* --- Horizontal rail ----------------------------------------------------
+   * Swipeable, snapping row of tiles. Scrollbar hidden because the tiles are
+   * visibly cut off at the edge, which is the affordance.
+   */
+  .lp-rail {
+    scroll-snap-type: x mandatory;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .lp-rail::-webkit-scrollbar { display: none; }
+  .lp-rail > * { scroll-snap-align: start; }
+
+}
+
+/* Gutter for a full-bleed rail. Mirrors .container-site exactly (max-w-6xl =
+ * 72rem, px-4 / sm:px-6 / lg:px-8) so the first tile lines up with the heading
+ * above it, while tiles still scroll to the screen edge. Based on 100%, not
+ * 100vw, so a vertical scrollbar doesn't skew it.
+ *
+ * Deliberately outside @layer components: these need their own media queries,
+ * and nesting @media inside the layer stops Tailwind emitting the rules. */
+.lp-rail-pad {
+  padding-inline: max(1rem, calc((100% - 72rem) / 2 + 1rem));
+  /* Must match padding-inline. Mandatory snapping otherwise parks the first
+   * tile flush against the content edge, scrolling the gutter away on load. */
+  scroll-padding-inline: max(1rem, calc((100% - 72rem) / 2 + 1rem));
+}
+@media (min-width: 640px) {
+  .lp-rail-pad {
+    padding-inline: max(1.5rem, calc((100% - 72rem) / 2 + 1.5rem));
+    scroll-padding-inline: max(1.5rem, calc((100% - 72rem) / 2 + 1.5rem));
+  }
+}
+@media (min-width: 1024px) {
+  .lp-rail-pad {
+    padding-inline: max(2rem, calc((100% - 72rem) / 2 + 2rem));
+    scroll-padding-inline: max(2rem, calc((100% - 72rem) / 2 + 2rem));
+  }
 }
 
 /* --- Reduced motion --------------------------------------------------------
@@ -137,7 +286,28 @@
     opacity: 1 !important;
     transform: none !important;
   }
+  /* Illustrations become still images: every part stays where it is drawn.
+   * The heartbeat segment is shown as a complete line instead of travelling. */
+  .lp-art * { animation: none !important; }
+  .lp-art .lp-pulse-line { stroke-dasharray: none; }
+  .lp-art .lp-ring,
+  .lp-art .lp-ring-b,
+  .lp-art .lp-speed,
+  .lp-art .lp-speed-b,
+  .lp-art .lp-speed-c { opacity: 0; }
+  .lp-art .lp-twinkle,
+  .lp-art .lp-twinkle-b,
+  .lp-art .lp-twinkle-c { opacity: 0.7; }
+  .lp-art .lp-drive { transform: translate3d(300px, 0, 0); }
   .lp-lift { transition: none; }
   .lp-lift:hover { transform: none; }
   .lp-underline { transition: none; background-size: 0% 1.5px; }
+  .lp-media-img { transition: none; }
+  .group:hover .lp-media-img,
+  .group:focus-visible .lp-media-img { transform: none; }
+  .lp-sheen::after { display: none; }
+  /* Snapping is motion the user did not ask for; plain scrolling still works. */
+  .lp-rail { scroll-snap-type: none; }
+  /* The header still condenses — it just snaps instead of easing. */
+  .lp-condense { transition: none !important; }
 }

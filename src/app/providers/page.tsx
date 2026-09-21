@@ -19,16 +19,12 @@ const programs = [
     body: "Compounded therapies for low testosterone, andropause, erectile dysfunction, and chronic prostatitis, tailored to each patient's needs.",
   },
   {
-    title: "Allergy Testing & Treatment",
-    body: "Allergist-quality testing and treatment programs, including sublingual immunotherapy drops and traditional injections.",
-  },
-  {
     title: "Weight Management",
     body: "A range of physician-directed options including vitamin injectables, appetite suppressants, and satiety support.",
   },
   {
     title: "Nutrition Therapy",
-    body: "Injectable and oral nutritional preparations, custom-tailored to individual patient requirements and preferences.",
+    body: "Injectable and custom-tailored to individual patient requirements and preferences.",
   },
   {
     title: "Pain Management",

@@ -4,6 +4,7 @@ import PageHero from "@/components/PageHero";
 import Reveal from "@/components/Reveal";
 import ProductCatalog from "@/components/ProductCatalog";
 import { getSiteSettings } from "@/lib/site";
+import { productCategories } from "@/lib/products";
 
 export const metadata: Metadata = {
   title: "Products",
@@ -17,8 +18,17 @@ export const metadata: Metadata = {
  * Content is static and public (src/lib/products.ts) — no patient data is read
  * or written here. The only dynamic dependency is admin-managed contact info.
  */
-export default async function ProductsPage() {
+export default async function ProductsPage({
+  searchParams,
+}: {
+  // ?category=wellness — how the home page's category rail deep-links in.
+  searchParams: Promise<{ category?: string }>;
+}) {
   const site = await getSiteSettings();
+  const { category } = await searchParams;
+  // Ignore an unknown id rather than rendering an empty grid.
+  const initialCategory =
+    category && productCategories.some((c) => c.id === category) ? category : "all";
 
   return (
     <>
@@ -38,7 +48,11 @@ export default async function ProductsPage() {
             </p>
           </Reveal>
 
-          <ProductCatalog phone={site.phone} phoneHref={site.phoneHref} />
+          <ProductCatalog
+            phone={site.phone}
+            phoneHref={site.phoneHref}
+            initialCategory={initialCategory}
+          />
 
           <Reveal as="div" className="mt-16">
             <div className="rounded-2xl bg-navy-900 px-8 py-12 text-center text-white sm:px-16">

@@ -16,7 +16,7 @@ const services = [
     icon: "💊",
   },
   {
-    title: "Sterile & Non-Sterile Compounding",
+    title: "Sterile Compounding",
     body: "Custom-compounded medications when commercial products don't fit — specialized strengths, dosage forms, and allergen-free formulations.",
     icon: "⚗️",
   },

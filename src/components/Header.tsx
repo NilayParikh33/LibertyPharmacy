@@ -1,21 +1,41 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import Logo from "./Logo";
 import { nav } from "@/lib/nav";
 
 export default function Header({ siteName }: { siteName: string }) {
   const [open, setOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   const pathname = usePathname();
 
+  // Condense the bar once the page scrolls, so the content gets more room and
+  // the header reads as floating above it. Passive listener — this must never
+  // block scrolling. Runs once on mount too, because a reload can restore a
+  // scroll position part-way down the page.
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 24);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   return (
-    <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
-      <div className="container-site flex h-16 items-center justify-between gap-4">
-        <Link href="/" className="flex items-center gap-2.5" aria-label={`${siteName} home`}>
-          <Logo />
-          <span className="text-lg font-bold tracking-tight text-navy-900">
+    <header
+      className={`lp-condense sticky top-0 z-50 border-b bg-white/95 backdrop-blur transition-[border-color,box-shadow] duration-300 ${
+        scrolled ? "border-slate-200 shadow-sm" : "border-transparent"
+      }`}
+    >
+      <div
+        className={`lp-condense container-site flex items-center justify-between gap-4 transition-[height] duration-300 ${
+          scrolled ? "h-14" : "h-16"
+        }`}
+      >
+        <Link href="/" className="flex items-center gap-3" aria-label={`${siteName} home`}>
+          <Logo className="h-11 w-11" />
+          <span className="text-xl font-bold tracking-tight text-navy-900">
             Liberty <span className="text-liberty-red">Pharmacy</span>
           </span>
         </Link>
