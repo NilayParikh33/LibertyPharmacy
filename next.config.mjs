@@ -62,6 +62,10 @@ const securityHeaders = [
 const nextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
+  // Hide the floating dev-tools indicator (the circular badge that reports a
+  // route as Static/Dynamic). It only ever renders in `next dev` — never in a
+  // production build — but it sits over the bottom-left corner of the UI.
+  devIndicators: false,
   // Traces only the node_modules each route actually needs into .next/standalone,
   // instead of the whole node_modules tree — keeps the ECS/Docker image small.
   output: "standalone",

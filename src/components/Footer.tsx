@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Logo from "./Logo";
+import AccreditationStrip from "./AccreditationStrip";
 import type { SiteSettings } from "@/lib/site";
 
 const gettingStarted = [
@@ -26,9 +27,9 @@ export default function Footer({ settings: site }: { settings: SiteSettings }) {
     <footer className="border-t border-slate-200 bg-navy-950 text-slate-300">
       <div className="container-site grid gap-10 py-14 sm:grid-cols-2 lg:grid-cols-4">
         <div>
-          <div className="flex items-center gap-2.5">
-            <Logo className="h-8 w-8" />
-            <span className="text-base font-bold text-white">
+          <div className="flex items-center gap-3">
+            <Logo className="h-11 w-11" />
+            <span className="text-lg font-bold text-white">
               Liberty <span className="text-liberty-gold">Pharmacy</span>
             </span>
           </div>
@@ -96,6 +97,8 @@ export default function Footer({ settings: site }: { settings: SiteSettings }) {
           </ul>
         </div>
       </div>
+
+      <AccreditationStrip />
 
       <div className="border-t border-navy-800">
         <div className="container-site flex flex-col items-center justify-between gap-2 py-5 text-xs text-slate-500 sm:flex-row">

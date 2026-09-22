@@ -1,7 +1,10 @@
 import Link from "next/link";
 import Reveal from "@/components/Reveal";
 import AnimatedCounter from "@/components/AnimatedCounter";
+import PharmacyHeroArt from "@/components/PharmacyHeroArt";
+import DeliveryArt from "@/components/DeliveryArt";
 import { getSiteSettings } from "@/lib/site";
+import { productCategories } from "@/lib/products";
 import { getSessionAccountId } from "@/lib/auth";
 
 // `value`/`suffix` drive the count-up; the rendered result is value + suffix
@@ -29,6 +32,11 @@ const highlights = [
     icon: "💳",
   },
 ];
+
+// Real catalog categories, so the rail and the /products filter can never
+// drift apart. "all" is the filter's reset, not a category to shop, and it has
+// no icon — the icon check excludes it.
+const shopCategories = productCategories.filter((c) => c.icon);
 
 const services = [
   { title: "Prescription Refills", body: "Fast, accurate refills with friendly reminders when you're due." },
@@ -82,21 +90,26 @@ export default async function HomePage() {
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-            {stats.map((s, i) => (
-              <div
-                key={s.label}
-                className="lp-enter rounded-xl bg-white/10 p-6 text-center backdrop-blur transition-transform duration-300 hover:-translate-y-1"
-                style={{ "--lp-delay": `${400 + i * 120}ms` } as React.CSSProperties}
-              >
-                <AnimatedCounter
-                  value={s.value}
-                  suffix={s.suffix}
-                  className="text-3xl font-bold text-liberty-gold"
-                />
-                <p className="mt-1 text-sm text-navy-100">{s.label}</p>
-              </div>
-            ))}
+          <div className="space-y-6">
+            <PharmacyHeroArt
+              className="lp-enter mx-auto w-full max-w-xs sm:max-w-sm"
+            />
+            <div className="grid grid-cols-3 gap-3 sm:gap-4">
+              {stats.map((s, i) => (
+                <div
+                  key={s.label}
+                  className="lp-enter rounded-xl bg-white/10 p-4 text-center backdrop-blur transition-transform duration-300 hover:-translate-y-1 sm:p-5"
+                  style={{ "--lp-delay": `${400 + i * 120}ms` } as React.CSSProperties}
+                >
+                  <AnimatedCounter
+                    value={s.value}
+                    suffix={s.suffix}
+                    className="text-2xl font-bold text-liberty-gold sm:text-3xl"
+                  />
+                  <p className="mt-1 text-xs text-navy-100 sm:text-sm">{s.label}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -123,6 +136,87 @@ export default async function HomePage() {
               </Reveal>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Delivery — animated scene, reusing the delivery highlight's promise. */}
+      <section className="pb-16 sm:pb-20">
+        <div className="container-site grid items-center gap-10 lg:grid-cols-2">
+          <Reveal as="div">
+            <h2 className="section-title">Prescriptions delivered to your door</h2>
+            <p className="mt-4 max-w-lg text-slate-600">
+              Most prescriptions are ready in about 15 minutes, and we deliver
+              free across the Austin area — so your medication reaches you
+              without another trip.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-4">
+              <Link href="/contact" className="btn-primary">
+                Ask about delivery
+              </Link>
+              <Link href="/services" className="btn-outline">
+                Our services
+              </Link>
+            </div>
+          </Reveal>
+          <Reveal as="div" variant="scale" delay={100}>
+            <DeliveryArt className="w-full rounded-2xl shadow-sm" />
+          </Reveal>
+        </div>
+      </section>
+
+      {/* Shop by category — a swipeable rail that deep-links into the catalog
+          filter. Ready for the client's own product ranges: add a category to
+          src/lib/products.ts with an `icon` and it appears here. */}
+      <section className="bg-slate-50 py-16 sm:py-20">
+        <div className="container-site">
+          <Reveal as="div" className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h2 className="section-title">Shop by category</h2>
+              <p className="mt-2 max-w-lg text-sm text-slate-600">
+                Browse what we keep on the shelf — then ask a pharmacist what suits you.
+              </p>
+            </div>
+            <Link href="/products" className="lp-underline text-sm font-semibold text-navy-700">
+              See everything →
+            </Link>
+          </Reveal>
+        </div>
+
+        {/* Full-bleed so tiles run to the screen edge while scrolling, with the
+            container's gutter recreated as padding. */}
+        <div className="lp-rail lp-rail-pad mt-8 flex gap-5 overflow-x-auto pb-4">
+          {shopCategories.map((cat, i) => (
+            <Reveal
+              as="div"
+              key={cat.id}
+              delay={i * 80}
+              variant="scale"
+              className="w-[70vw] shrink-0 sm:w-64"
+            >
+              <Link
+                href={`/products?category=${cat.id}`}
+                className="lp-lift lp-sheen group relative block h-full overflow-hidden rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
+              >
+                <span
+                  aria-hidden="true"
+                  className="lp-media-img inline-flex h-14 w-14 items-center justify-center rounded-xl bg-navy-50 text-3xl"
+                >
+                  {cat.icon}
+                </span>
+                <h3 className="mt-4 text-base font-semibold text-navy-900">{cat.label}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{cat.blurb}</p>
+                <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-navy-700">
+                  Browse
+                  <span
+                    aria-hidden="true"
+                    className="transition-transform duration-300 group-hover:translate-x-1"
+                  >
+                    →
+                  </span>
+                </span>
+              </Link>
+            </Reveal>
+          ))}
         </div>
       </section>
 

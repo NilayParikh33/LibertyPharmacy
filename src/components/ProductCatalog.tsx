@@ -23,8 +23,17 @@ import {
  *    the originating card on close, Escape closes it, Tab is trapped inside,
  *    and background scroll is locked while it is open.
  */
-export default function ProductCatalog({ phone, phoneHref }: { phone: string; phoneHref: string }) {
-  const [activeCategory, setActiveCategory] = useState("all");
+export default function ProductCatalog({
+  phone,
+  phoneHref,
+  initialCategory = "all",
+}: {
+  phone: string;
+  phoneHref: string;
+  /** Preselected filter, e.g. from /products?category=wellness. */
+  initialCategory?: string;
+}) {
+  const [activeCategory, setActiveCategory] = useState(initialCategory);
   const [selected, setSelected] = useState<Product | null>(null);
 
   const visible = useMemo(() => productsByCategory(activeCategory), [activeCategory]);
@@ -96,19 +105,7 @@ export default function ProductCatalog({ phone, phoneHref }: { phone: string; ph
               aria-haspopup="dialog"
               className="card lp-lift group flex w-full flex-col items-start text-left"
             >
-              <div className="flex w-full items-start justify-between gap-3">
-                <span
-                  aria-hidden="true"
-                  className="text-3xl transition-transform duration-300 group-hover:scale-110"
-                >
-                  {product.icon}
-                </span>
-                {product.badge && (
-                  <span className="rounded-full bg-navy-50 px-2.5 py-1 text-xs font-semibold text-navy-700">
-                    {product.badge}
-                  </span>
-                )}
-              </div>
+              <ProductMedia product={product} />
               <h3 className="mt-4 text-base font-semibold text-navy-900">{product.name}</h3>
               <p className="mt-2 flex-1 text-sm leading-6 text-slate-600">{product.summary}</p>
               <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-navy-700">
@@ -129,6 +126,45 @@ export default function ProductCatalog({ phone, phoneHref }: { phone: string; ph
         <ProductDialog product={selected} onClose={close} phone={phone} phoneHref={phoneHref} />
       )}
     </>
+  );
+}
+
+/**
+ * Card media tile — the product photograph, zooming gently while the card is
+ * hovered or keyboard-focused.
+ *
+ * Until the client supplies photography, `image` is unset and this renders a
+ * tinted tile with the product's emoji instead, so the grid keeps a consistent
+ * shape either way. Adding a photo later is a one-line data change.
+ */
+function ProductMedia({ product }: { product: Product }) {
+  return (
+    <div className="lp-media relative aspect-[4/3] w-full rounded-lg bg-gradient-to-br from-navy-50 via-white to-slate-100">
+      {product.image ? (
+        // Plain <img>, not next/image: the site ships no image optimizer in its
+        // Docker runtime and the CSP allows img-src 'self' only, so these are
+        // served straight from public/.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={product.image}
+          alt={product.imageAlt ?? ""}
+          loading="lazy"
+          className="lp-media-img h-full w-full rounded-lg object-cover"
+        />
+      ) : (
+        <span
+          aria-hidden="true"
+          className="lp-media-img flex h-full w-full items-center justify-center text-5xl"
+        >
+          {product.icon}
+        </span>
+      )}
+      {product.badge && (
+        <span className="absolute right-2.5 top-2.5 rounded-full bg-white/95 px-2.5 py-1 text-xs font-semibold text-navy-700 shadow-sm">
+          {product.badge}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -226,6 +262,17 @@ function ProductDialog({
             </svg>
           </button>
         </div>
+
+        {product.image && (
+          <div className="lp-panel-item mt-5 overflow-hidden rounded-xl" style={{ animationDelay: "40ms" }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={product.image}
+              alt={product.imageAlt ?? ""}
+              className="aspect-[16/9] w-full object-cover"
+            />
+          </div>
+        )}
 
         <p
           className="lp-panel-item mt-5 text-sm leading-7 text-slate-700"

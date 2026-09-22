@@ -19,6 +19,8 @@ export type ProductCategory = {
   label: string;
   /** Short line shown when the category is the active filter. */
   blurb: string;
+  /** Emoji shown on the home page category rail. "all" needs none. */
+  icon?: string;
 };
 
 export type Product = {
@@ -36,6 +38,15 @@ export type Product = {
   badge?: string;
   /** Availability line shown in the detail panel. */
   availability: string;
+  /**
+   * Product photograph. Optional: until the client supplies real photography,
+   * cards fall back to a tinted tile showing `icon`. Put files under `public/`
+   * and reference them as "/products/<file>.jpg" — the CSP allows img-src
+   * 'self' only, so images must be served from this app, not a CDN.
+   */
+  image?: string;
+  /** Alt text for `image`. Required whenever `image` is set. */
+  imageAlt?: string;
 };
 
 export const productCategories: ProductCategory[] = [
@@ -48,26 +59,31 @@ export const productCategories: ProductCategory[] = [
     id: "wellness",
     label: "Vitamins & Wellness",
     blurb: "Daily supplements and wellness essentials, pharmacist-vetted for quality.",
+    icon: "🌿",
   },
   {
     id: "compounding",
     label: "Compounding",
     blurb: "Custom-made medications when an off-the-shelf product doesn't fit.",
+    icon: "⚗️",
   },
   {
     id: "home-health",
     label: "Home Health",
     blurb: "Mobility aids, monitors, and recovery supplies for care at home.",
+    icon: "🏠",
   },
   {
     id: "diabetes",
     label: "Diabetes Care",
     blurb: "Testing supplies, footcare, and everyday support for living with diabetes.",
+    icon: "🩺",
   },
   {
     id: "otc",
     label: "Over-the-Counter",
     blurb: "Trusted OTC remedies with a pharmacist on hand to help you choose.",
+    icon: "💊",
   },
 ];
 
