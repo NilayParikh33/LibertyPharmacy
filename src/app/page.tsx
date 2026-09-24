@@ -37,10 +37,9 @@ const highlights: { title: string; body: string; icon: IconName }[] = [
   },
 ];
 
-// Real catalog categories, so the rail and the /products filter can never
-// drift apart. "all" is the filter's reset, not a category to shop, and it has
-// no icon — the icon check excludes it.
-const shopCategories = productCategories.filter((c) => c.icon);
+// Read straight from the catalog, so these tiles and the /products sections
+// can never drift apart.
+const shopCategories = productCategories;
 
 const services: { title: string; body: string; icon: IconName }[] = [
   { title: "Prescription Refills", body: "Fast, accurate refills with friendly reminders when you're due.", icon: "pill" },
@@ -89,7 +88,7 @@ export default async function HomePage() {
               style={delayStyle(60)}
             >
               <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-liberty-gold" />
-              Pharmacy · Compounding · Vitamins · Wellness
+              Pharmacy · Peptides · Vitamins · Wellness
             </p>
 
             <h1 className="mt-6 text-4xl font-bold leading-[1.08] tracking-tight sm:text-5xl lg:text-[3.5rem]">
@@ -191,9 +190,8 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Shop by category — a swipeable rail that deep-links into the catalog
-          filter. Ready for the client's own product ranges: add a category to
-          src/lib/products.ts with an `icon` and it appears here. */}
+      {/* Shop by category — one large image tile per catalog section, each
+          linking straight to that section of /products. */}
       <section className="bg-slate-50 py-20 sm:py-24">
         <div className="container-site">
           <Reveal as="div" className="flex flex-wrap items-end justify-between gap-4">
@@ -201,45 +199,46 @@ export default async function HomePage() {
               <p className="eyebrow">Shop</p>
               <h2 className="section-title mt-3">Shop by category</h2>
               <p className="section-lead">
-                Browse what we keep on the shelf — then ask a pharmacist what suits you.
+                Vitamins on the shelf, peptides compounded to your prescription —
+                and a pharmacist to help with both.
               </p>
             </div>
             <Link href="/products" className="group inline-flex items-center gap-1.5 text-sm font-semibold text-navy-700">
-              <span className="lp-underline">See everything</span>
+              <span className="lp-underline">See all products</span>
               <ArrowRight aria-hidden="true" className="lp-arrow h-4 w-4" />
             </Link>
           </Reveal>
-        </div>
 
-        {/* Touch sizes: a full-bleed swipe rail, tiles running to the screen
-            edge with the container's gutter recreated as padding. From lg up
-            it becomes a grid — a mouse has no obvious way to scroll a rail
-            whose scrollbar is hidden, so every tile must be visible. */}
-        <div className="lp-rail lp-rail-pad mt-10 flex gap-5 overflow-x-auto pb-4 lg:grid lg:grid-cols-5 lg:overflow-visible lg:pb-0">
-          {shopCategories.map((cat, i) => (
-            <Reveal
-              as="div"
-              key={cat.id}
-              delay={stagger(i)}
-              variant="scale"
-              className="w-[72vw] shrink-0 sm:w-64 lg:w-auto"
-            >
-              <Link
-                href={`/products?category=${cat.id}`}
-                className="card lp-lift lp-sheen group relative flex h-full flex-col overflow-hidden"
-              >
-                <span className="icon-tile lp-media-img">
-                  {cat.icon && <Icon name={cat.icon} />}
-                </span>
-                <h3 className="mt-5 text-base font-semibold text-navy-950">{cat.label}</h3>
-                <p className="mt-2 flex-1 text-sm leading-6 text-slate-600">{cat.blurb}</p>
-                <span className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-navy-700">
-                  Browse
-                  <ArrowRight aria-hidden="true" className="lp-arrow h-4 w-4" />
-                </span>
-              </Link>
-            </Reveal>
-          ))}
+          <div className="mt-10 grid gap-6 md:grid-cols-2">
+            {shopCategories.map((cat, i) => (
+              <Reveal as="div" key={cat.id} delay={stagger(i)} variant="scale" className="flex">
+                <Link
+                  href={`/products#${cat.id}`}
+                  className="card lp-lift group relative flex w-full flex-col overflow-hidden p-0"
+                >
+                  <div className="lp-media aspect-[16/10] bg-slate-100">
+                    {/* Plain <img>: no image optimizer in the standalone runtime,
+                        and the CSP allows img-src 'self' only. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={cat.image} alt="" loading="lazy" className="lp-media-img h-full w-full object-cover" />
+                  </div>
+                  <div className="flex flex-1 flex-col p-6">
+                    <div className="flex items-center gap-3">
+                      <span className="icon-tile h-10 w-10">
+                        <Icon name={cat.icon} className="h-5 w-5" />
+                      </span>
+                      <h3 className="text-xl font-semibold tracking-tight text-navy-950">{cat.label}</h3>
+                    </div>
+                    <p className="mt-3 flex-1 text-sm leading-6 text-slate-600">{cat.blurb}</p>
+                    <span className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-navy-700">
+                      Shop {cat.label.toLowerCase()}
+                      <ArrowRight aria-hidden="true" className="lp-arrow h-4 w-4" />
+                    </span>
+                  </div>
+                </Link>
+              </Reveal>
+            ))}
+          </div>
         </div>
       </section>
 

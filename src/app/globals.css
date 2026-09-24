@@ -209,10 +209,6 @@
   0%, 100% { transform: translate3d(0, 0, 0); }
   50%      { transform: translate3d(36px, 0, 0); }
 }
-@keyframes lp-sheen {
-  from { transform: translate3d(-120%, 0, 0) skewX(-18deg); }
-  to   { transform: translate3d(220%, 0, 0) skewX(-18deg); }
-}
 
 @layer components {
   /* --- Scroll reveal ------------------------------------------------------
@@ -329,59 +325,6 @@
     transform: scale(1.06);
   }
 
-  /* One-pass highlight sweep across a tile, on hover only. The sheen element
-   * is a skewed white gradient that starts and ends outside the frame. */
-  .lp-sheen::after {
-    content: "";
-    position: absolute;
-    inset: 0 auto 0 0;
-    width: 45%;
-    transform: translate3d(-120%, 0, 0) skewX(-18deg);
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
-    pointer-events: none;
-  }
-  .lp-sheen:hover::after,
-  .lp-sheen:focus-visible::after {
-    animation: lp-sheen 0.85s cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  /* --- Horizontal rail ----------------------------------------------------
-   * Swipeable, snapping row of tiles. Scrollbar hidden because the tiles are
-   * visibly cut off at the edge, which is the affordance.
-   */
-  .lp-rail {
-    scroll-snap-type: x mandatory;
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-  .lp-rail::-webkit-scrollbar { display: none; }
-  .lp-rail > * { scroll-snap-align: start; }
-}
-
-/* Gutter for a full-bleed rail. Mirrors .container-site exactly (max-w-6xl =
- * 72rem, px-4 / sm:px-6 / lg:px-8) so the first tile lines up with the heading
- * above it, while tiles still scroll to the screen edge. Based on 100%, not
- * 100vw, so a vertical scrollbar doesn't skew it.
- *
- * Deliberately outside @layer components: these need their own media queries,
- * and nesting @media inside the layer stops Tailwind emitting the rules. */
-.lp-rail-pad {
-  padding-inline: max(1rem, calc((100% - 72rem) / 2 + 1rem));
-  /* Must match padding-inline. Mandatory snapping otherwise parks the first
-   * tile flush against the content edge, scrolling the gutter away on load. */
-  scroll-padding-inline: max(1rem, calc((100% - 72rem) / 2 + 1rem));
-}
-@media (min-width: 640px) {
-  .lp-rail-pad {
-    padding-inline: max(1.5rem, calc((100% - 72rem) / 2 + 1.5rem));
-    scroll-padding-inline: max(1.5rem, calc((100% - 72rem) / 2 + 1.5rem));
-  }
-}
-@media (min-width: 1024px) {
-  .lp-rail-pad {
-    padding-inline: max(2rem, calc((100% - 72rem) / 2 + 2rem));
-    scroll-padding-inline: max(2rem, calc((100% - 72rem) / 2 + 2rem));
-  }
 }
 
 /* --- Reduced motion --------------------------------------------------------
@@ -428,9 +371,6 @@
   .lp-media-img { transition: none; }
   .group:hover .lp-media-img,
   .group:focus-within .lp-media-img { transform: none; }
-  .lp-sheen::after { display: none; }
-  /* Snapping is motion the user did not ask for; plain scrolling still works. */
-  .lp-rail { scroll-snap-type: none; }
   /* The header still condenses — it just snaps instead of easing. */
   .lp-condense { transition: none !important; }
   /* Collapsible panels open and close instantly. */

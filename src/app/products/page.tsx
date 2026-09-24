@@ -10,7 +10,7 @@ import { productCategories } from "@/lib/products";
 export const metadata: Metadata = {
   title: "Products",
   description:
-    "Browse vitamins, home health equipment, diabetes care, over-the-counter remedies, and custom compounding services at Liberty Pharmacy in Austin, TX.",
+    "Pharmacist-vetted vitamins and prescription peptide therapies compounded to order at Liberty Pharmacy in Austin, TX.",
 };
 
 /**
@@ -22,15 +22,15 @@ export const metadata: Metadata = {
 export default async function ProductsPage({
   searchParams,
 }: {
-  // ?category=wellness — how the home page's category rail deep-links in.
+  // ?category=peptides — older links; the catalog scrolls to that section.
   // ?q=vitamin — a shared or bookmarked search.
   searchParams: Promise<{ category?: string; q?: string }>;
 }) {
   const site = await getSiteSettings();
   const { category, q } = await searchParams;
-  // Ignore an unknown id rather than rendering an empty grid.
+  // Ignore an unknown id rather than scrolling nowhere.
   const initialCategory =
-    category && productCategories.some((c) => c.id === category) ? category : "all";
+    category && productCategories.some((c) => c.id === category) ? category : undefined;
   const initialQuery = typeof q === "string" ? q.slice(0, 80) : "";
 
   return (
@@ -38,7 +38,7 @@ export default async function ProductsPage({
       <PageHero
         eyebrow="Shop"
         title="Products & Supplies"
-        subtitle="Browse what we stock — then talk to a pharmacist who can tell you whether it's right for you."
+        subtitle="Pharmacist-vetted vitamins, and prescription peptides compounded to order — with a pharmacist to guide you through both."
       />
 
       <section className="py-16 sm:py-20">
@@ -51,8 +51,8 @@ export default async function ProductsPage({
               <div className="relative">
                 <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">Can&apos;t find what you need?</h2>
                 <p className="mx-auto mt-3 max-w-xl text-navy-100">
-                  We order specialty items in regularly and compound what isn&apos;t made
-                  commercially. Tell us what you&apos;re looking for and we&apos;ll track it down.
+                  We order specialty items in regularly and compound to prescription.
+                  Tell us what you&apos;re looking for and we&apos;ll tell you what we can do.
                 </p>
                 <div className="mt-8 flex flex-wrap justify-center gap-3">
                   <a href={site.phoneHref} className="btn-accent">

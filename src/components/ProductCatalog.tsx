@@ -1,59 +1,58 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, X } from "lucide-react";
+import { Info, Search, X } from "lucide-react";
 import Reveal from "./Reveal";
 import ProductCard from "./ProductCard";
+import { Icon } from "@/lib/icons";
 import { productCategories, productsByCategory, searchProducts } from "@/lib/products";
 import { stagger } from "@/lib/motion";
 
 /**
- * Browsable product catalog: search + category filter over a card grid.
+ * Product catalog: one section per category, with a search that filters
+ * across all of them.
  *
  * All content is static public marketing copy (src/lib/products.ts) — no PHI,
- * no session, no network. Filtering is instant and client-side.
- *
- * The current filter is mirrored into the URL (?category=…&q=…) with
- * history.replaceState, so a filtered view can be shared or bookmarked
+ * no session, no network. Search is instant and client-side, and is mirrored
+ * into the URL (?q=…) with history.replaceState so a search can be shared
  * without adding a history entry per keystroke.
  *
- * Accessibility:
- *  - Category filters are toggle buttons with aria-pressed (not tabs — there
- *    is one filtered grid, not a panel per category).
- *  - The result count is a polite live region, so filtering is announced.
+ * Sections (rather than filter chips) because there are only a few
+ * categories: everything is visible at once, and the pills at the top are
+ * plain in-page links (#peptides etc.) that the home page links into too.
  */
 export default function ProductCatalog({
-  initialCategory = "all",
   initialQuery = "",
+  initialCategory,
 }: {
-  /** Preselected filter, e.g. from /products?category=wellness. */
-  initialCategory?: string;
   initialQuery?: string;
+  /** Scroll to this section on load — supports old ?category= links. */
+  initialCategory?: string;
 }) {
-  const [activeCategory, setActiveCategory] = useState(initialCategory);
   const [query, setQuery] = useState(initialQuery);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const visible = useMemo(
-    () => searchProducts(productsByCategory(activeCategory), query),
-    [activeCategory, query]
+  const sections = useMemo(
+    () =>
+      productCategories.map((cat) => ({
+        cat,
+        items: searchProducts(productsByCategory(cat.id), query),
+      })),
+    [query]
   );
-  const activeBlurb = productCategories.find((c) => c.id === activeCategory)?.blurb;
+  const total = sections.reduce((n, s) => n + s.items.length, 0);
 
-  // Mirror the filter into the address bar.
+  // Mirror the search into the address bar.
   useEffect(() => {
-    const params = new URLSearchParams();
-    if (activeCategory !== "all") params.set("category", activeCategory);
-    if (query.trim()) params.set("q", query.trim());
-    const qs = params.toString();
-    window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
-  }, [activeCategory, query]);
+    const q = query.trim();
+    const url = q ? `?q=${encodeURIComponent(q)}${window.location.hash}` : `${window.location.pathname}${window.location.hash}`;
+    window.history.replaceState(null, "", url);
+  }, [query]);
 
-  const resetAll = () => {
-    setQuery("");
-    setActiveCategory("all");
-    inputRef.current?.focus();
-  };
+  // Old /products?category=peptides links land on the right section.
+  useEffect(() => {
+    if (initialCategory) document.getElementById(initialCategory)?.scrollIntoView();
+  }, [initialCategory]);
 
   return (
     <>
@@ -73,7 +72,7 @@ export default function ProductCatalog({
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search vitamins, supplies, compounding…"
+            placeholder="Search vitamins and peptides…"
             autoComplete="off"
             className="input-field rounded-full py-3.5 pl-12 pr-12 text-base [&::-webkit-search-cancel-button]:hidden"
           />
@@ -93,66 +92,101 @@ export default function ProductCatalog({
         </div>
       </div>
 
-      {/* --- Category filter ---------------------------------------------- */}
-      <div role="group" aria-label="Filter products by category" className="mt-6 flex flex-wrap justify-center gap-2">
-        {productCategories.map((cat) => {
-          const active = cat.id === activeCategory;
-          return (
-            <button
-              key={cat.id}
-              type="button"
-              aria-pressed={active}
-              onClick={() => setActiveCategory(cat.id)}
-              className={`rounded-full px-4 py-2 text-sm font-semibold transition-[background-color,color,border-color,box-shadow] duration-200 ease-standard focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-700 ${
-                active
-                  ? "bg-navy-900 text-white shadow-glow-navy"
-                  : "border border-slate-200 bg-white text-slate-600 hover:border-navy-300 hover:text-navy-900"
-              }`}
-            >
-              {cat.label}
-            </button>
-          );
-        })}
-      </div>
+      {/* --- Jump links ---------------------------------------------------- */}
+      <nav aria-label="Product sections" className="mt-6 flex flex-wrap justify-center gap-2">
+        {sections.map(({ cat, items }) => (
+          <a
+            key={cat.id}
+            href={`#${cat.id}`}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-navy-800 shadow-card transition-[border-color,box-shadow,color] duration-200 ease-standard hover:border-navy-300 hover:text-navy-950 hover:shadow-lift focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-700"
+          >
+            <Icon name={cat.icon} className="h-4 w-4 text-navy-600" strokeWidth={2} />
+            {cat.label}
+            <span className="rounded-full bg-navy-50 px-1.5 text-xs tabular-nums text-navy-700">{items.length}</span>
+          </a>
+        ))}
+      </nav>
 
-      <div className="mt-6 flex flex-col items-center gap-1 text-center">
-        {activeBlurb && !query && (
-          // key replays the fade each time the category changes.
-          <p key={`blurb-${activeCategory}`} className="lp-enter text-sm text-slate-600">
-            {activeBlurb}
-          </p>
+      <p aria-live="polite" className="mt-4 text-center text-xs font-medium text-slate-500">
+        {query.trim() ? (
+          <>
+            {total === 1 ? "1 product" : `${total} products`} matching &ldquo;{query.trim()}&rdquo;
+          </>
+        ) : (
+          <span className="sr-only">{total} products</span>
         )}
-        <p aria-live="polite" className="text-xs font-medium text-slate-500">
-          {visible.length === 1 ? "1 product" : `${visible.length} products`}
-          {query.trim() && <> matching &ldquo;{query.trim()}&rdquo;</>}
-        </p>
-      </div>
+      </p>
 
-      {/* --- Grid --------------------------------------------------------- */}
-      {visible.length > 0 ? (
-        // Keyed on category (not the query) so the stagger replays when the
-        // category changes, but typing doesn't re-animate the whole grid.
-        <div key={`grid-${activeCategory}`} className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {visible.map((product, i) => (
-            <Reveal as="div" key={product.id} delay={stagger(i)} variant="scale" className="flex">
-              <ProductCard product={product} />
-            </Reveal>
-          ))}
-        </div>
-      ) : (
+      {/* --- Sections ------------------------------------------------------ */}
+      {total === 0 ? (
         <div className="lp-enter mx-auto mt-10 max-w-md rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
           <span className="icon-tile mx-auto">
             <Search aria-hidden="true" className="h-5 w-5" />
           </span>
           <p className="mt-4 font-semibold text-navy-950">No products match that search</p>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Try a different word, or browse everything. If we don&apos;t stock it,
-            we can usually order it in — just ask.
+            Try a different word. If we don&apos;t stock it, we can usually order
+            it in — just ask.
           </p>
-          <button type="button" onClick={resetAll} className="btn-outline btn-sm mt-6">
+          <button
+            type="button"
+            onClick={() => {
+              setQuery("");
+              inputRef.current?.focus();
+            }}
+            className="btn-outline btn-sm mt-6"
+          >
             Show all products
           </button>
         </div>
+      ) : (
+        sections.map(
+          ({ cat, items }) =>
+            items.length > 0 && (
+              <section key={cat.id} id={cat.id} aria-labelledby={`${cat.id}-title`} className="scroll-mt-28 pt-16">
+                <Reveal as="div" className="flex flex-wrap items-end justify-between gap-6 border-b border-slate-200 pb-6">
+                  <div className="flex items-start gap-4">
+                    <span className="icon-tile">
+                      <Icon name={cat.icon} />
+                    </span>
+                    <div>
+                      <h2 id={`${cat.id}-title`} className="text-2xl font-bold tracking-tight text-navy-950 sm:text-3xl">
+                        {cat.label}
+                      </h2>
+                      <p className="mt-1.5 max-w-xl text-sm leading-6 text-slate-600">{cat.blurb}</p>
+                    </div>
+                  </div>
+                  <p className="text-sm font-medium text-slate-500">
+                    {items.length === 1 ? "1 product" : `${items.length} products`}
+                  </p>
+                </Reveal>
+
+                {cat.note && (
+                  <Reveal
+                    as="p"
+                    className="mt-6 flex gap-3 rounded-2xl border border-amber-200/70 bg-amber-50/70 p-4 text-sm leading-6 text-amber-900"
+                  >
+                    <Info aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                    <span>{cat.note}</span>
+                  </Reveal>
+                )}
+
+                {/* Four columns when the count divides by four, so a section
+                    never ends with a single orphaned card. */}
+                <div
+                  className={`mt-8 grid gap-6 sm:grid-cols-2 ${
+                    items.length % 4 === 0 ? "lg:grid-cols-4" : "lg:grid-cols-3"
+                  }`}
+                >
+                  {items.map((product, i) => (
+                    <Reveal as="div" key={product.id} delay={stagger(i)} variant="scale" className="flex">
+                      <ProductCard product={product} />
+                    </Reveal>
+                  ))}
+                </div>
+              </section>
+            )
+        )
       )}
     </>
   );

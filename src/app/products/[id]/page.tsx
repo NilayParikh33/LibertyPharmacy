@@ -61,7 +61,7 @@ export default async function ProductPage({ params }: { params: Params }) {
               <ChevronRight className="h-3.5 w-3.5" />
             </li>
             <li>
-              <Link href={`/products?category=${product.categoryId}`} className="transition-colors hover:text-navy-900">
+              <Link href={`/products#${product.categoryId}`} className="transition-colors hover:text-navy-900">
                 {category}
               </Link>
             </li>
@@ -90,7 +90,7 @@ export default async function ProductPage({ params }: { params: Params }) {
           {/* Summary + actions */}
           <div>
             <Link
-              href={`/products?category=${product.categoryId}`}
+              href={`/products#${product.categoryId}`}
               className="lp-enter eyebrow transition-colors hover:text-navy-900"
               style={delayStyle(120)}
             >
@@ -179,7 +179,7 @@ export default async function ProductPage({ params }: { params: Params }) {
                 <h2 className="section-title mt-3">You may also need</h2>
               </div>
               <Link
-                href={`/products?category=${product.categoryId}`}
+                href={`/products#${product.categoryId}`}
                 className="lp-underline text-sm font-semibold text-navy-700"
               >
                 See all {category.toLowerCase()}
