@@ -3,6 +3,7 @@ import { ArrowRight, MapPin, Phone } from "lucide-react";
 import Reveal from "@/components/Reveal";
 import AnimatedCounter from "@/components/AnimatedCounter";
 import DeliveryArt from "@/components/DeliveryArt";
+import HeroBackdrop from "@/components/HeroBackdrop";
 import { getSiteSettings } from "@/lib/site";
 import { productCategories } from "@/lib/products";
 import { getSessionAccountId } from "@/lib/auth";
@@ -53,8 +54,9 @@ export default async function HomePage() {
   return (
     <>
       {/* Hero — above the fold, so it animates on load rather than on scroll. */}
-      <section className="bg-gradient-to-br from-navy-950 via-navy-900 to-navy-700 text-white">
-        <div className="container-site grid items-center gap-12 py-20 lg:grid-cols-2 lg:py-28">
+      <section className="relative isolate overflow-hidden bg-gradient-to-br from-navy-950 via-navy-900 to-navy-700 text-white">
+        <HeroBackdrop />
+        <div className="container-site relative grid items-center gap-12 py-20 lg:grid-cols-2 lg:py-28">
           <div>
             <p className="lp-enter mb-4 inline-block rounded-full bg-navy-800/80 px-4 py-1.5 text-sm font-medium text-navy-100">
               Independently owned pharmacy in Austin, Texas

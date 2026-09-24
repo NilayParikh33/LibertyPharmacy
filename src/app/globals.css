@@ -205,6 +205,23 @@
 @keyframes lp-spin {
   to { transform: rotate(360deg); }
 }
+/* Hero backdrop: icons bob and tilt gently in place. */
+@keyframes lp-float {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+  50%      { transform: translate3d(0, -14px, 0) rotate(var(--lp-tilt, 8deg)); }
+}
+/* Hero backdrop: particles rise the height of their lane and dissolve. */
+@keyframes lp-rise {
+  0%   { transform: translate3d(0, 0, 0); opacity: 0; }
+  15%  { opacity: 1; }
+  80%  { opacity: 1; }
+  100% { transform: translate3d(0, -100%, 0); opacity: 0; }
+}
+/* Hero backdrop: one pulse runs along the heartbeat line, then rests. */
+@keyframes lp-ecg {
+  0%        { stroke-dashoffset: 120; }
+  70%, 100% { stroke-dashoffset: -1200; }
+}
 @keyframes lp-drift {
   0%, 100% { transform: translate3d(0, 0, 0); }
   50%      { transform: translate3d(36px, 0, 0); }
@@ -251,6 +268,21 @@
   .lp-hover-b { animation: lp-hover 9.5s ease-in-out -3s infinite; }
   .lp-orb     { animation: lp-orb 24s ease-in-out infinite; }
   .lp-orb-b   { animation: lp-orb 30s ease-in-out -10s infinite reverse; }
+  /* Backdrop icons fade in once on load, then float indefinitely. */
+  .lp-float {
+    animation:
+      lp-fade-in 1.4s cubic-bezier(0.22, 1, 0.36, 1) var(--lp-delay, 0ms) both,
+      lp-float var(--lp-dur, 12s) ease-in-out var(--lp-offset, 0s) infinite;
+  }
+  .lp-rise {
+    opacity: 0;
+    animation: lp-rise var(--lp-dur, 10s) linear var(--lp-offset, 0s) infinite;
+  }
+  .lp-ecg {
+    stroke-dasharray: 120 1320;
+    filter: drop-shadow(0 0 5px rgb(212 168 72 / 0.8));
+    animation: lp-ecg 6.5s cubic-bezier(0.45, 0, 0.55, 1) 1.2s infinite both;
+  }
   .lp-fill {
     transform-origin: left center;
     animation: lp-fill 1.4s cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -354,6 +386,10 @@
     opacity: 1 !important;
     transform: none !important;
   }
+  /* Hero backdrop becomes a still illustration. */
+  .lp-float { animation: none !important; }
+  .lp-rise,
+  .lp-ecg { display: none; }
   /* The status bar is shown full rather than filling. */
   .lp-fill { animation: none !important; transform: none !important; }
   /* Illustrations become still images: every part stays where it is drawn. */
