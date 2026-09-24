@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, MapPin, Phone } from "lucide-react";
 import Reveal from "@/components/Reveal";
@@ -85,17 +86,36 @@ export default async function HomePage() {
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-            {stats.map((s, i) => (
-              <div
-                key={s.label}
-                className="lp-enter rounded-xl bg-white/10 p-6 text-center backdrop-blur transition-transform duration-300 hover:-translate-y-1"
-                style={delayStyle(400 + i * 120)}
-              >
-                <AnimatedCounter value={s.value} suffix={s.suffix} className="text-3xl font-bold text-liberty-gold" />
-                <p className="mt-1 text-sm text-navy-100">{s.label}</p>
-              </div>
-            ))}
+          {/* Pharmacist illustration, standing on the section's bottom edge
+              (the negative margin cancels the section's bottom padding), with
+              the stats floating over the lower part of her coat. */}
+          <div className="relative mx-auto -mb-20 w-full max-w-[21rem] self-end sm:max-w-sm lg:-mb-28 lg:max-w-[23.5rem]">
+            <Image
+              src="/hero/pharmacist.svg"
+              alt=""
+              width={400}
+              height={656}
+              priority
+              unoptimized
+              className="lp-enter-scale h-auto w-full [mask-image:linear-gradient(to_bottom,black_62%,transparent_97%)]"
+              style={delayStyle(250)}
+            />
+            <div className="absolute inset-x-0 bottom-10 grid grid-cols-3 gap-2.5 sm:bottom-14 sm:gap-4 lg:-inset-x-10">
+              {stats.map((s, i) => (
+                <div
+                  key={s.label}
+                  className="lp-enter rounded-xl bg-navy-950/60 px-2 py-4 text-center ring-1 ring-white/10 backdrop-blur-md transition-transform duration-300 hover:-translate-y-1 sm:p-5"
+                  style={delayStyle(500 + i * 120)}
+                >
+                  <AnimatedCounter
+                    value={s.value}
+                    suffix={s.suffix}
+                    className="text-2xl font-bold text-liberty-gold sm:text-3xl"
+                  />
+                  <p className="mt-1 text-xs leading-4 text-navy-100 sm:text-sm sm:leading-5">{s.label}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
