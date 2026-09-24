@@ -1,6 +1,7 @@
 /**
  * Animated delivery scene: a Liberty van drives past the pharmacy and a row of
- * homes while clouds drift and the road markings scroll.
+ * homes while clouds drift slowly overhead. Deliberately calm — one moving
+ * subject, no speed lines or bounce.
  *
  * Inline SVG + CSS keyframes (globals.css, "Illustration motion"). Decorative
  * only — hidden from assistive tech, and still under prefers-reduced-motion.
@@ -73,9 +74,9 @@ export default function DeliveryArt({ className = "" }: { className?: string }) 
       <House x={340} w={92} h={80} roof={RED} />
       <House x={474} w={84} h={70} roof={NAVY} />
 
-      {/* A happy heart over the last home. */}
+      {/* A heart over the last home — static; the van carries the motion. */}
       <g transform="translate(516 54)">
-        <g className="lp-beat">
+        <g>
           <path
             d="M0,10 C-16,-2 -12,-16 0,-8 C12,-16 16,-2 0,10 Z"
             fill={RED}
@@ -93,7 +94,7 @@ export default function DeliveryArt({ className = "" }: { className?: string }) 
         <circle cx="450.5" cy="146" r="13" fill="#5f8f6b" />
       </g>
 
-      {/* Road with scrolling centre line. */}
+      {/* Road with a static centre line — the van moves, the scene does not. */}
       <rect x="0" y="176" width="600" height="44" fill={NAVY_DARK} />
       <rect x="0" y="176" width="600" height="3" fill="#3a5482" />
       <line
@@ -105,18 +106,12 @@ export default function DeliveryArt({ className = "" }: { className?: string }) 
         strokeOpacity="0.85"
         strokeWidth="3"
         strokeDasharray="24 20"
-        className="lp-road"
       />
 
       {/* Delivery van, driving left to right. */}
       <g transform="translate(0 192)">
         <g className="lp-drive">
-          {/* Speed streaks trailing behind. */}
-          <line x1="-26" y1="-40" x2="-12" y2="-40" stroke="#fff" strokeWidth="3" strokeLinecap="round" className="lp-speed" />
-          <line x1="-34" y1="-28" x2="-16" y2="-28" stroke="#fff" strokeWidth="3" strokeLinecap="round" className="lp-speed-b" />
-          <line x1="-24" y1="-16" x2="-10" y2="-16" stroke="#fff" strokeWidth="3" strokeLinecap="round" className="lp-speed-c" />
-
-          <g className="lp-bump">
+          <g>
             {/* Cargo box and cab. */}
             <rect x="0" y="-56" width="78" height="46" rx="6" fill={RED} />
             <path d="M78,-56 H100 L122,-32 V-10 H78 Z" fill="#a93226" />

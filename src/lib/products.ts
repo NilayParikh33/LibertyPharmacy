@@ -10,24 +10,29 @@
  *    every call to action routes to a pharmacist (phone/contact), never to a
  *    purchase flow. Keep it that way unless a licensed e-commerce path with
  *    its own review is built.
+ *  - The "saved list" (src/lib/saved-list.tsx) is the shopping-list stand-in:
+ *    it lives only in the visitor's own browser and is never sent to us, so
+ *    it adds no PHI surface. It ends in "call to reserve", not a checkout.
  *  - `details` bullets are informational, not medical advice. Copy changes
  *    should be reviewed by the pharmacist-in-charge.
  */
+
+import type { IconName } from "./icons";
 
 export type ProductCategory = {
   id: string;
   label: string;
   /** Short line shown when the category is the active filter. */
   blurb: string;
-  /** Emoji shown on the home page category rail. "all" needs none. */
-  icon?: string;
+  /** Icon shown on the home page category rail. "all" needs none. */
+  icon?: IconName;
 };
 
 export type Product = {
   id: string;
   name: string;
   categoryId: string;
-  icon: string;
+  icon: IconName;
   /** One-line summary shown on the card. */
   summary: string;
   /** Full description shown in the detail panel on click. */
@@ -59,31 +64,31 @@ export const productCategories: ProductCategory[] = [
     id: "wellness",
     label: "Vitamins & Wellness",
     blurb: "Daily supplements and wellness essentials, pharmacist-vetted for quality.",
-    icon: "🌿",
+    icon: "leaf",
   },
   {
     id: "compounding",
     label: "Compounding",
     blurb: "Custom-made medications when an off-the-shelf product doesn't fit.",
-    icon: "⚗️",
+    icon: "flask",
   },
   {
     id: "home-health",
     label: "Home Health",
     blurb: "Mobility aids, monitors, and recovery supplies for care at home.",
-    icon: "🏠",
+    icon: "house-plus",
   },
   {
     id: "diabetes",
     label: "Diabetes Care",
     blurb: "Testing supplies, footcare, and everyday support for living with diabetes.",
-    icon: "🩺",
+    icon: "droplet",
   },
   {
     id: "otc",
     label: "Over-the-Counter",
     blurb: "Trusted OTC remedies with a pharmacist on hand to help you choose.",
-    icon: "💊",
+    icon: "pill",
   },
 ];
 
@@ -93,7 +98,7 @@ export const products: Product[] = [
     id: "daily-multivitamin",
     name: "Daily Multivitamins",
     categoryId: "wellness",
-    icon: "🌿",
+    icon: "tablets",
     summary: "Age- and gender-specific formulas from brands we trust.",
     description:
       "A well-chosen multivitamin fills the small gaps an ordinary diet leaves behind. We stock formulas tailored by age and life stage — including prenatal, 50-plus, and men's and women's blends — and we stick to brands that publish third-party purity testing.",
@@ -110,7 +115,7 @@ export const products: Product[] = [
     id: "vitamin-d",
     name: "Vitamin D & Calcium",
     categoryId: "wellness",
-    icon: "☀️",
+    icon: "sun",
     summary: "Bone-health support in tablets, softgels, and chewables.",
     description:
       "Vitamin D helps your body absorb calcium, and many adults run low on it — especially if you spend most of your day indoors. We carry a range of strengths so your pharmacist can match the dose your provider recommended rather than whatever the shelf happens to have.",
@@ -126,7 +131,7 @@ export const products: Product[] = [
     id: "probiotics",
     name: "Probiotics & Digestive Health",
     categoryId: "wellness",
-    icon: "🦠",
+    icon: "microscope",
     summary: "Refrigerated, live-culture probiotics stored properly.",
     description:
       "Probiotics only work if the cultures are still alive when you take them. We keep our refrigerated lines in a monitored cooler and rotate stock by expiry, so what you take home is what the label promises.",
@@ -144,7 +149,7 @@ export const products: Product[] = [
     id: "compounded-topicals",
     name: "Compounded Topical Creams",
     categoryId: "compounding",
-    icon: "⚗️",
+    icon: "flask",
     summary: "Custom-strength creams and gels made to your prescription.",
     description:
       "When a medication works better applied to the site than swallowed, we can compound it into a cream, gel, or ointment at the exact strength your prescriber specifies. This is a prescription service — bring us the script and we'll handle the rest.",
@@ -161,7 +166,7 @@ export const products: Product[] = [
     id: "compounded-pediatric",
     name: "Pediatric Flavoring & Dosing",
     categoryId: "compounding",
-    icon: "🧸",
+    icon: "baby",
     summary: "Liquid suspensions and kid-friendly flavors.",
     description:
       "Children rarely take medicine that tastes unpleasant, and many medications simply aren't made in a child's dose. We convert tablets into accurately dosed liquid suspensions and flavor them to something your child will actually finish.",
@@ -178,7 +183,7 @@ export const products: Product[] = [
     id: "compounded-allergen-free",
     name: "Allergen-Free Formulations",
     categoryId: "compounding",
-    icon: "🚫",
+    icon: "wheat-off",
     summary: "Medications remade without the filler that affects you.",
     description:
       "Commercial medications often contain lactose, gluten, dyes, or preservatives that some patients react to. We can prepare the same active ingredient without the excipient causing the problem, so you don't have to choose between your treatment and your tolerance.",
@@ -197,7 +202,7 @@ export const products: Product[] = [
     id: "bp-monitors",
     name: "Blood Pressure Monitors",
     categoryId: "home-health",
-    icon: "🩺",
+    icon: "heart-pulse",
     summary: "Validated home monitors, fitted and demonstrated in store.",
     description:
       "A home monitor is only useful if the cuff fits and you know how to use it. We stock validated upper-arm monitors, measure your arm for the right cuff size, and walk you through taking a reading before you leave.",
@@ -214,7 +219,7 @@ export const products: Product[] = [
     id: "mobility-aids",
     name: "Mobility & Daily Living Aids",
     categoryId: "home-health",
-    icon: "🦯",
+    icon: "accessibility",
     summary: "Canes, walkers, grab bars, and reachers.",
     description:
       "Staying independent at home often comes down to a few well-chosen pieces of equipment. We carry canes, rollators, walkers, bath safety rails, and daily-living aids, and we'll adjust the height properly rather than sending you home to guess.",
@@ -230,7 +235,7 @@ export const products: Product[] = [
     id: "wound-care",
     name: "Wound & Recovery Supplies",
     categoryId: "home-health",
-    icon: "🩹",
+    icon: "bandage",
     summary: "Dressings, braces, and post-surgical supplies.",
     description:
       "From a scraped knee to post-surgical recovery, we stock the dressings, compression, and support products that keep healing on track — and our pharmacists can advise on what suits the wound you're actually dealing with.",
@@ -248,7 +253,7 @@ export const products: Product[] = [
     id: "glucose-monitoring",
     name: "Glucose Meters & Test Strips",
     categoryId: "diabetes",
-    icon: "🩸",
+    icon: "droplet",
     summary: "Meters, strips, and lancets — with insurance checked for you.",
     description:
       "Test strips are one of the most common places patients overpay. We stock the major meter systems, and before you buy we'll check which brand your plan actually covers so you're not paying cash for the wrong one.",
@@ -265,7 +270,7 @@ export const products: Product[] = [
     id: "diabetic-footcare",
     name: "Diabetic Footcare",
     categoryId: "diabetes",
-    icon: "🧦",
+    icon: "footprints",
     summary: "Non-binding socks, creams, and inspection mirrors.",
     description:
       "Foot complications are among the most preventable problems in diabetes care, and small daily habits do most of the work. We stock non-binding socks that don't restrict circulation, urea-based moisturizers, and the mirrors that make a daily foot check practical.",
@@ -283,7 +288,7 @@ export const products: Product[] = [
     id: "cold-flu",
     name: "Cold, Flu & Allergy",
     categoryId: "otc",
-    icon: "🤧",
+    icon: "thermometer",
     summary: "Relief that won't clash with your prescriptions.",
     description:
       "Many cold and allergy remedies interact with blood pressure medications, antidepressants, and blood thinners. Ask before you pick — our pharmacists will point you to something effective that's safe alongside what you already take.",
@@ -300,7 +305,7 @@ export const products: Product[] = [
     id: "pain-relief",
     name: "Pain & Fever Relief",
     categoryId: "otc",
-    icon: "💊",
+    icon: "pill",
     summary: "Acetaminophen, ibuprofen, and topical options.",
     description:
       "The right choice depends on what else you take and what you're treating. Acetaminophen and anti-inflammatories are not interchangeable — particularly if you're on a blood thinner or have kidney concerns — so it's worth a thirty-second conversation.",
@@ -316,7 +321,7 @@ export const products: Product[] = [
     id: "first-aid",
     name: "First Aid Essentials",
     categoryId: "otc",
-    icon: "🧰",
+    icon: "briefcase-medical",
     summary: "Everything for a properly stocked home kit.",
     description:
       "Most home first aid kits are missing something important until the moment it's needed. We can help you put together a complete kit for home, car, or travel — or restock the one you already have.",
@@ -338,4 +343,30 @@ export function productsByCategory(categoryId: string): Product[] {
 /** Human-readable category label for a product, used in the detail panel. */
 export function categoryLabel(categoryId: string): string {
   return productCategories.find((c) => c.id === categoryId)?.label ?? "Products";
+}
+
+/** A single product by id, or undefined for an unknown/retired id. */
+export function getProduct(id: string): Product | undefined {
+  return products.find((p) => p.id === id);
+}
+
+/** Other products in the same category, for "you may also need". */
+export function relatedProducts(product: Product, limit = 3): Product[] {
+  return products.filter((p) => p.categoryId === product.categoryId && p.id !== product.id).slice(0, limit);
+}
+
+/**
+ * Case-insensitive search across the text a customer would recognise: name,
+ * summary, description, detail bullets and category. Every word in the query
+ * must match somewhere, so "vitamin d" narrows rather than widens.
+ */
+export function searchProducts(list: Product[], query: string): Product[] {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return list;
+  return list.filter((p) => {
+    const haystack = [p.name, p.summary, p.description, categoryLabel(p.categoryId), ...p.details]
+      .join(" ")
+      .toLowerCase();
+    return terms.every((t) => haystack.includes(t));
+  });
 }

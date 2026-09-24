@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { stagger } from "@/lib/motion";
+import Reveal from "@/components/Reveal";
 import Link from "next/link";
 import PageHero from "@/components/PageHero";
 import { getSiteSettings } from "@/lib/site";
@@ -37,6 +39,7 @@ export default async function ProvidersPage() {
   return (
     <>
       <PageHero
+        eyebrow="Providers"
         title="For Providers"
         subtitle="Partner with a compounding pharmacy that works hand-in-hand with your practice."
       />
@@ -57,17 +60,15 @@ export default async function ProvidersPage() {
           </div>
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {programs.map((p) => (
-              <div key={p.title} className="card">
-                <h3 className="text-base font-semibold uppercase tracking-wide text-navy-900">
-                  {p.title}
-                </h3>
+            {programs.map((p, i) => (
+              <Reveal as="div" key={p.title} delay={stagger(i)} className="card lp-lift">
+                <h3 className="text-base font-semibold text-navy-950">{p.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-slate-600">{p.body}</p>
-              </div>
+              </Reveal>
             ))}
           </div>
 
-          <div className="mt-14 rounded-2xl bg-navy-900 p-8 text-center text-white sm:p-12">
+          <div className="mt-16 rounded-3xl bg-navy-950 p-8 text-center text-white sm:p-12">
             <h2 className="text-xl font-bold sm:text-2xl">
               Ready to collaborate on patient care?
             </h2>
