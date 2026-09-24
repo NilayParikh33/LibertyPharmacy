@@ -463,9 +463,23 @@ declare global {
   var __libertyDbPromise: Promise<AppDb> | undefined;
 }
 
-/** Reuse one pool across Next.js hot reloads. */
+/**
+ * Reuse one pool across Next.js hot reloads.
+ *
+ * Only a *successful* init is cached. If the database is unreachable when the
+ * first request arrives (a restart, a managed-Postgres blip during deploy),
+ * caching the rejected promise would make every later request fail too — the
+ * site would return 500s until the Node process restarted, even after the
+ * database came back. Clearing it lets the next request retry. A failed init
+ * leaves nothing to clean up: the pool opens no sockets until first use.
+ */
 export function getDb(): Promise<AppDb> {
-  if (!globalThis.__libertyDbPromise) globalThis.__libertyDbPromise = init();
+  if (!globalThis.__libertyDbPromise) {
+    globalThis.__libertyDbPromise = init().catch((err) => {
+      globalThis.__libertyDbPromise = undefined;
+      throw err;
+    });
+  }
   return globalThis.__libertyDbPromise;
 }
 
