@@ -1,10 +1,10 @@
+import Image from "next/image";
 import Link from "next/link";
-import { Fragment } from "react";
 import { ArrowRight, MapPin, Phone } from "lucide-react";
 import Reveal from "@/components/Reveal";
 import AnimatedCounter from "@/components/AnimatedCounter";
-import HeroVisual from "@/components/HeroVisual";
 import DeliveryArt from "@/components/DeliveryArt";
+import HeroBackdrop from "@/components/HeroBackdrop";
 import { getSiteSettings } from "@/lib/site";
 import { productCategories } from "@/lib/products";
 import { getSessionAccountId } from "@/lib/auth";
@@ -14,9 +14,9 @@ import { delayStyle, stagger } from "@/lib/motion";
 // `value`/`suffix` drive the count-up; the rendered result is value + suffix
 // (e.g. 50 + "K+" → "50K+").
 const stats = [
-  { value: 20, suffix: "+", label: "Years serving Austin" },
-  { value: 50, suffix: "K+", label: "Prescriptions filled" },
-  { value: 10, suffix: "K+", label: "Patients served" },
+  { value: 20, suffix: "+", label: "Years Serving Austin" },
+  { value: 50, suffix: "K+", label: "Prescriptions Filled" },
+  { value: 10, suffix: "K+", label: "Patients Served" },
 ];
 
 const highlights: { title: string; body: string; icon: IconName }[] = [
@@ -48,96 +48,75 @@ const services: { title: string; body: string; icon: IconName }[] = [
   { title: "Medication Sync", body: "Every refill aligned to one monthly pickup — one trip, everything ready.", icon: "calendar-check" },
 ];
 
-/** Headline split into words that rise in sequence. Spaces stay real text. */
-function Words({ text, start, step = 45 }: { text: string; start: number; step?: number }) {
-  return (
-    <>
-      {text.split(" ").map((word, i) => (
-        <Fragment key={i}>
-          {i > 0 && " "}
-          <span className="lp-word" style={delayStyle(start + i * step)}>
-            {word}
-          </span>
-        </Fragment>
-      ))}
-    </>
-  );
-}
-
 export default async function HomePage() {
   const site = await getSiteSettings();
   const signedIn = (await getSessionAccountId()) !== null;
-  const lineOne = "Care you can trust,";
-  const lineTwo = "right in your neighborhood";
-  const lineTwoStart = 140 + lineOne.split(" ").length * 45;
 
   return (
     <>
-      {/* ------------------------------------------------------------------
-          Hero — the load sequence. Everything here is CSS-timed, so it plays
-          without JavaScript and is still under reduced motion.
-         ------------------------------------------------------------------ */}
-      <section className="relative overflow-hidden bg-navy-950 text-white">
-        <div className="absolute inset-0 bg-gradient-to-br from-navy-950 via-navy-900 to-navy-800" />
-        <div className="bg-dot-grid absolute inset-0" />
-
-        <div className="container-site relative grid items-center gap-8 py-16 lg:grid-cols-[1.1fr_1fr] lg:gap-12 lg:py-24">
+      {/* Hero — above the fold, so it animates on load rather than on scroll. */}
+      <section className="relative isolate overflow-hidden bg-gradient-to-br from-navy-950 via-navy-900 to-navy-700 text-white">
+        <HeroBackdrop />
+        <div className="container-site relative grid items-center gap-12 py-20 lg:grid-cols-2 lg:py-28">
           <div>
-            <p
-              className="lp-enter inline-flex items-center gap-2.5 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-semibold tracking-wide text-navy-100 backdrop-blur"
-              style={delayStyle(60)}
-            >
-              <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-liberty-gold" />
-              Pharmacy · Peptides · Vitamins · Wellness
+            <p className="lp-enter mb-4 inline-block rounded-full bg-navy-800/80 px-4 py-1.5 text-sm font-medium text-navy-100">
+              Independently owned pharmacy in Austin, Texas
             </p>
-
-            <h1 className="mt-6 text-4xl font-bold leading-[1.08] tracking-tight sm:text-5xl lg:text-[3.5rem]">
-              <Words text={lineOne} start={140} />{" "}
-              {/* Own line from sm up, so "Care you can trust," reads as one thought. */}
-              <span className="text-liberty-gold sm:block">
-                <Words text={lineTwo} start={lineTwoStart} />
-              </span>
+            <h1 className="lp-enter text-4xl font-bold leading-tight tracking-tight sm:text-5xl" style={delayStyle(100)}>
+              Care you can trust, <span className="text-liberty-gold">right in your neighborhood</span>
             </h1>
-
-            <p className="lp-enter mt-6 max-w-xl text-lg leading-8 text-navy-100" style={delayStyle(480)}>
-              An independent Austin pharmacy with the personal attention you
-              remember — fast fills, free delivery, custom compounding, and
-              pharmacists who know you by name.
+            <p className="lp-enter mt-5 max-w-xl text-lg text-navy-100" style={delayStyle(200)}>
+              Liberty Pharmacy combines the personal attention of a local pharmacy
+              with modern convenience — fast fills, free delivery, and pharmacists
+              who know you by name.
             </p>
-
-            <div className="lp-enter mt-8 flex flex-wrap gap-3" style={delayStyle(560)}>
-              <Link href={signedIn ? "/portal" : "/portal/register"} className="btn-accent group">
-                {signedIn ? "My Portal" : "Become a patient"}
-                <ArrowRight aria-hidden="true" className="lp-arrow h-4 w-4" />
-              </Link>
+            <div className="lp-enter mt-8 flex flex-wrap gap-4" style={delayStyle(300)}>
+              {signedIn ? (
+                <Link href="/portal" className="btn-accent">
+                  My Portal
+                </Link>
+              ) : (
+                <Link href="/portal/register" className="btn-accent">
+                  New Patient
+                </Link>
+              )}
               <Link href="/portal" className="btn-ghost-light">
-                Transfer a prescription
+                Transfer a Prescription
               </Link>
             </div>
-
-            <dl
-              className="lp-enter mt-12 grid max-w-md grid-cols-3 divide-x divide-white/10 border-t border-white/10 pt-6"
-              style={delayStyle(660)}
-            >
-              {stats.map((s) => (
-                <div key={s.label} className="px-4 first:pl-0">
-                  <dt className="sr-only">{s.label}</dt>
-                  <dd>
-                    <AnimatedCounter
-                      value={s.value}
-                      suffix={s.suffix}
-                      className="text-2xl font-bold tracking-tight text-white sm:text-3xl"
-                    />
-                    <p aria-hidden="true" className="mt-1 text-xs leading-4 text-navy-200">
-                      {s.label}
-                    </p>
-                  </dd>
-                </div>
-              ))}
-            </dl>
           </div>
 
-          <HeroVisual />
+          {/* Pharmacist illustration, standing on the section's bottom edge
+              (the negative margin cancels the section's bottom padding), with
+              the stats floating over the lower part of her coat. */}
+          <div className="relative mx-auto -mb-20 w-full max-w-[21rem] self-end sm:max-w-sm lg:-mb-28 lg:max-w-[23.5rem]">
+            <Image
+              src="/hero/pharmacist.svg"
+              alt=""
+              width={400}
+              height={656}
+              priority
+              unoptimized
+              className="lp-enter-scale h-auto w-full [mask-image:linear-gradient(to_bottom,black_62%,transparent_97%)]"
+              style={delayStyle(250)}
+            />
+            <div className="absolute inset-x-0 bottom-10 grid grid-cols-3 gap-2.5 sm:bottom-14 sm:gap-4 lg:-inset-x-10">
+              {stats.map((s, i) => (
+                <div
+                  key={s.label}
+                  className="lp-enter rounded-xl bg-navy-950/60 px-2 py-4 text-center ring-1 ring-white/10 backdrop-blur-md transition-transform duration-300 hover:-translate-y-1 sm:p-5"
+                  style={delayStyle(500 + i * 120)}
+                >
+                  <AnimatedCounter
+                    value={s.value}
+                    suffix={s.suffix}
+                    className="text-2xl font-bold text-liberty-gold sm:text-3xl"
+                  />
+                  <p className="mt-1 text-xs leading-4 text-navy-100 sm:text-sm sm:leading-5">{s.label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 
