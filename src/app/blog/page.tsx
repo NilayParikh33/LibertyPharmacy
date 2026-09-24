@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { stagger } from "@/lib/motion";
+import Reveal from "@/components/Reveal";
 import Link from "next/link";
 import PageHero from "@/components/PageHero";
 import { getPosts } from "@/lib/posts";
@@ -23,14 +25,15 @@ export default async function BlogIndexPage() {
   return (
     <>
       <PageHero
+        eyebrow="Blog"
         title="Health & Wellness Blog"
         subtitle="Practical guidance from your neighborhood pharmacists."
       />
 
       <section className="py-16">
         <div className="container-site grid gap-8 sm:grid-cols-2">
-          {posts.map((post) => (
-            <article key={post.slug} className="card flex flex-col">
+          {posts.map((post, i) => (
+            <Reveal as="article" key={post.slug} delay={stagger(i)} className="card lp-lift flex flex-col">
               <p className="text-xs font-medium uppercase tracking-wide text-liberty-red">
                 {formatDate(post.date)} · {post.readMinutes} min read
               </p>
@@ -47,7 +50,7 @@ export default async function BlogIndexPage() {
               >
                 Read article →
               </Link>
-            </article>
+            </Reveal>
           ))}
         </div>
       </section>
