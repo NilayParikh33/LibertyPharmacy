@@ -1,7 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { z } from "zod";
-import { registerPatient, startMfaChallenge } from "@/lib/auth";
-import { getClientIp } from "@/lib/request";
+import { registerPatient, startMfaChallenge, startDecoyChallenge } from "@/lib/auth";
+import { sendAccountExistsEmail } from "@/lib/mail";
+import { getClientIp, getAppBaseUrl } from "@/lib/request";
+import { createRateLimiter } from "@/lib/rate-limit";
 
 /**
  * Patient registration.
@@ -65,26 +67,12 @@ const registrationSchema = z.object({
   }),
 });
 
-// Simple in-memory rate limit: max 5 registration attempts / 10 min / IP.
-const attempts = new Map<string, { count: number; resetAt: number }>();
-function rateLimited(ip: string): boolean {
-  const now = Date.now();
-  // Opportunistic sweep so a client rotating IPs can't grow this map forever.
-  for (const [key, slot] of attempts) {
-    if (slot.resetAt < now) attempts.delete(key);
-  }
-  const slot = attempts.get(ip);
-  if (!slot || slot.resetAt < now) {
-    attempts.set(ip, { count: 1, resetAt: now + 10 * 60 * 1000 });
-    return false;
-  }
-  slot.count += 1;
-  return slot.count > 5;
-}
+// Max 5 registration attempts / 10 min / IP.
+const limiter = createRateLimiter({ limit: 5, windowMs: 10 * 60 * 1000 });
 
 export async function POST(request: Request) {
   const ip = getClientIp(request);
-  if (rateLimited(ip)) {
+  if (limiter.hit(ip)) {
     return NextResponse.json({ error: "Too many attempts. Please try again later." }, { status: 429 });
   }
 
@@ -124,7 +112,16 @@ export async function POST(request: Request) {
   );
 
   if (!result.ok) {
-    return NextResponse.json({ error: result.error }, { status: 409 });
+    // Email already registered. Answer exactly as for a new signup — same
+    // body, same pending cookie (a decoy that can never complete) — so this
+    // endpoint can't be used to test which emails are patients here (SEC-002).
+    // The real owner is emailed a notice instead of a code, after the
+    // response so mail latency isn't observable either.
+    await startDecoyChallenge();
+    const base = getAppBaseUrl(request);
+    const email = d.email.trim().toLowerCase();
+    after(() => sendAccountExistsEmail(email, `${base}/portal/login`, `${base}/portal/forgot`).catch(() => {}));
+    return NextResponse.json({ ok: true, next: "verify" });
   }
 
   // Account exists but is NOT active until the emailed code is confirmed.

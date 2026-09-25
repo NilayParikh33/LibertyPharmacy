@@ -186,6 +186,55 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
   throw new Error("Email transport not configured — cannot send password reset links in production.");
 }
 
+/**
+ * Sent instead of a verification code when someone registers an email that
+ * already has an account. The registration response is identical either way
+ * (SEC-002), so this is how the real owner finds out — and, if it was them,
+ * how they get back in.
+ */
+export async function sendAccountExistsEmail(to: string, signInUrl: string, forgotUrl: string): Promise<void> {
+  const subject = "Someone tried to create a Liberty Pharmacy account with your email";
+  const text =
+    `Someone just tried to create a new Liberty Pharmacy account using this email address, ` +
+    `but you already have an account with us.\n\n` +
+    `If that was you, sign in here: ${signInUrl}\n` +
+    `Forgot your password? Reset it here: ${forgotUrl}\n\n` +
+    `If it wasn't you, you can ignore this email — no new account was created and nothing about your account has changed.\n\n` +
+    NO_REPLY_NOTE;
+
+  if (transporter) {
+    await transporter.sendMail({
+      from: `"Liberty Pharmacy" <${fromAddress}>`,
+      to,
+      subject,
+      text,
+      html: `
+        <div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px">
+          <h2 style="color:#1b2a47;margin:0 0 16px">Liberty Pharmacy</h2>
+          <p style="color:#334155;font-size:15px;line-height:1.6">Someone just tried to create a new account using this email address, but you already have an account with us.</p>
+          <p style="text-align:center;padding:8px 0">
+            <a href="${signInUrl}" style="display:inline-block;background:#1b2a47;color:#fff;text-decoration:none;font-weight:bold;padding:12px 28px;border-radius:8px">Sign in</a>
+          </p>
+          <p style="color:#64748b;font-size:13px;line-height:1.6">Forgot your password? <a href="${forgotUrl}" style="color:#1b2a47">Reset it here</a>. If this wasn't you, you can safely ignore this email — no new account was created and nothing about your account has changed.</p>
+          <p style="color:#94a3b8;font-size:12px;line-height:1.6;border-top:1px solid #e2e8f0;padding-top:12px;margin-top:16px">${NO_REPLY_NOTE}</p>
+        </div>`,
+    });
+    return;
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`\n[mail:dev] To: ${to}\n[mail:dev] Subject: ${subject}\n`);
+    return;
+  }
+
+  if (demoLogCodes) {
+    demoLog("account-exists notice", to, signInUrl);
+    return;
+  }
+
+  throw new Error("Email transport not configured — cannot send account notices in production.");
+}
+
 export interface ContactMessageInput {
   firstName: string;
   lastName: string;
