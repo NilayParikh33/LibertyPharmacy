@@ -11,15 +11,18 @@
     "admin:mfa": "node scripts/admin-mfa-qr.mjs",
     "db": "node scripts/dev-db.mjs",
     "audit:report": "node scripts/audit-archive.mjs report",
-    "audit:archive": "node scripts/audit-archive.mjs archive"
+    "audit:archive": "node scripts/audit-archive.mjs archive",
+    "test:security:static": "node tests/security/static.mjs",
+    "test:security": "node tests/security/static.mjs && node tests/security/poc.mjs",
+    "test:security:e2e": "node tests/security/functional.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-sesv2": "^3.1118.0",
     "@aws-sdk/rds-signer": "^3.1118.0",
     "@fontsource-variable/plus-jakarta-sans": "^5.3.0",
     "lucide-react": "^1.47.0",
-    "next": "^15.1.6",
-    "nodemailer": "^9.0.3",
+    "next": "^15.5.26",
+    "nodemailer": "^9.1.1",
     "otplib": "^13.5.0",
     "pg": "^8.13.1",
     "qrcode": "^1.5.4",
@@ -37,9 +40,14 @@
     "autoprefixer": "^10.4.20",
     "embedded-postgres": "^18.4.0-beta.17",
     "eslint": "^9.18.0",
-    "eslint-config-next": "^15.1.6",
-    "postcss": "^8.4.49",
+    "eslint-config-next": "^15.5.26",
+    "postcss": "^8.5.28",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "$postcss"
+    }
   }
 }
