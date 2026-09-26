@@ -145,23 +145,23 @@ export const products: Product[] = [
   // --- Peptides -------------------------------------------------------------
   // Claim-free by design — see the PEPTIDES note at the top of this file.
   {
-    id: "sermorelin",
-    name: "Sermorelin",
+    id: "nad-plus",
+    name: "NAD+",
     categoryId: "peptides",
     icon: "syringe",
-    summary: "Compounded to your physician's prescription, with supplies and guidance.",
+    summary: "Compounded to your prescriber's order, with supplies and guidance.",
     description:
-      "Sermorelin is a peptide your physician may prescribe as part of a supervised treatment plan. We compound it to the strength and schedule on your prescription, dispense it with the supplies you need, and walk you through storage and administration before you leave.",
+      "NAD+ (nicotinamide adenine dinucleotide) is a coenzyme your prescriber may order as part of a supervised treatment plan. It isn't a peptide, but it is often prescribed alongside peptide therapies, so we list it here. We compound it in the form and strength on your prescription, dispense it with the supplies you need, and walk you through storage and administration before you leave.",
     details: [
       "Prescription required — prepared to your prescriber's exact order",
+      "Form and strength set by your prescriber",
       "Dispensed with supplies and step-by-step administration guidance",
-      "Refrigerated storage, handled cold from compounding to pickup",
       "We coordinate refills and dose changes directly with your prescriber",
     ],
     availability: "Made to order — prescription required",
     badge: "Prescription",
-    image: "/products/sermorelin.webp",
-    imageAlt: "Liberty Pharmacy sermorelin vial with a pharmacy label",
+    image: "/products/nad-plus.webp",
+    imageAlt: "Liberty Pharmacy NAD+ vials with a pharmacy label",
   },
   {
     id: "glutathione",
