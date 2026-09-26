@@ -69,10 +69,14 @@ migration later:
     delivery channel is configured.
 - Footer states the site's no-PHI posture.
 
-### Transport & browser security (`next.config.mjs`)
+### Transport & browser security (`next.config.mjs`, `src/middleware.ts`)
 - `Strict-Transport-Security` (2 years, includeSubDomains, preload).
-- `Content-Security-Policy`: self-origin only for scripts/styles/connections;
-  `frame-ancestors 'none'`; `form-action 'self'`; `upgrade-insecure-requests`.
+- `Content-Security-Policy` (set per request in `src/middleware.ts`): scripts
+  only with a per-request nonce (no `'unsafe-inline'`); self-origin only for
+  styles/images/fonts/connections; `frame-ancestors 'none'`;
+  `form-action 'self'`; `upgrade-insecure-requests`.
+- API responses are `Cache-Control: no-store`; state-changing API calls must
+  come from this site (Sec-Fetch-Site / Origin check) with a JSON body.
 - `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
   `Referrer-Policy: strict-origin-when-cross-origin`,
   `Permissions-Policy` denying camera/mic/geolocation/payment,
@@ -92,6 +96,16 @@ migration later:
   **Must be reviewed by the pharmacy's Privacy Officer/counsel before launch.**
 
 ---
+
+### Production-only guarantees (`src/lib/deployment.ts`)
+The same code also runs demo deployments with fake data (e.g. Render). Their
+demo conveniences can never apply to the production patient-data deployment,
+which is identified by its Amazon RDS database:
+- `DEMO_SHOW_OTP_ON_SCREEN` and `DEMO_LOG_OTP_CODES` are **refused** on RDS, so
+  sign-in and verification codes are only ever delivered by email.
+- `DB_SSL_MODE` values other than `verify-ca` are **ignored** on RDS, so the
+  database connection is always TLS-verified against Amazon's CA.
+Either being set on the production deployment is logged at startup.
 
 ## 2. Operational checklist (required before/at launch)
 
