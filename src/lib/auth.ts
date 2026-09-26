@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { after } from "next/server";
 import { getDb, audit } from "./db";
 import {
   encryptPHI,
@@ -8,8 +9,10 @@ import {
   generateSessionToken,
   hashSessionToken,
   generateOtpCode,
+  burnPasswordCheck,
 } from "./crypto";
-import { sendOtpEmail, sendPasswordResetEmail } from "./mail";
+import { sendOtpEmail, sendPasswordResetEmail, sendAccountExistsEmail } from "./mail";
+import { createRateLimiter } from "./rate-limit";
 
 /**
  * Authentication + patient-record service.
@@ -74,18 +77,28 @@ export interface PatientProfile {
 
 const enc = (v: string | undefined | null) => (v ? encryptPHI(v) : null);
 
+/**
+ * Creates the account + patient record.
+ *
+ * `{ duplicate: true }` means the email is already registered. Callers must
+ * make that outcome indistinguishable from a new signup to whoever sent the
+ * request — same response, same cookies, same timing — and tell the real
+ * owner by email instead (see the register route and SEC-002).
+ */
 export async function registerPatient(
   input: RegistrationInput,
   ip?: string
-): Promise<{ ok: true; accountId: number } | { ok: false; error: string }> {
+): Promise<{ ok: true; accountId: number } | { ok: false; duplicate: true }> {
   const db = await getDb();
   const email = input.email.trim().toLowerCase();
 
   const existing = await db.prepare("SELECT id FROM accounts WHERE email = ?").get(email);
   if (existing) {
+    // Match the scrypt cost of the new-account path below, so response time
+    // doesn't reveal that this email is taken.
+    burnPasswordCheck(input.password);
     await audit({ actor: "anonymous", action: "auth.register", outcome: "failure", detail: "duplicate_email", ip });
-    // Same message as success path would imply — do not confirm which emails exist.
-    return { ok: false, error: "Unable to create an account with these details. If you already have an account, please sign in." };
+    return { ok: false, duplicate: true };
   }
 
   const accountId = await db.transaction(async () => {
@@ -142,6 +155,12 @@ export async function registerPatient(
   return { ok: true, accountId };
 }
 
+// Failed-login counter for emails that have no account. Real accounts lock in
+// the database after MAX_FAILED_LOGINS; without an equivalent here, only real
+// accounts ever answered "too many attempts", which told an attacker exactly
+// which emails are registered (SEC-002b). Same threshold and window.
+const unknownEmailFailures = createRateLimiter({ limit: MAX_FAILED_LOGINS, windowMs: LOCKOUT_MS });
+
 export async function loginPatient(
   emailRaw: string,
   password: string,
@@ -159,6 +178,13 @@ export async function loginPatient(
     .get<{ id: number; password_hash: string; failed_logins: number; locked_until: string | null; email_verified: number }>(email);
 
   if (!acct) {
+    if (unknownEmailFailures.isLimited(email)) {
+      await audit({ actor: "anonymous", action: "auth.login", outcome: "failure", detail: "locked", ip });
+      return { ok: false, error: "Too many failed attempts. Please try again in a few minutes.", status: 429 };
+    }
+    // Same scrypt cost as a real account's wrong password (SEC-002c).
+    burnPasswordCheck(password);
+    unknownEmailFailures.hit(email);
     await audit({ actor: "anonymous", action: "auth.login", outcome: "failure", detail: "unknown_email", ip });
     return generic;
   }
@@ -230,31 +256,89 @@ export async function startMfaChallenge(
     )
     .run(hashSessionToken(token), accountId, purpose, hashSessionToken(code), expires.toISOString());
 
-  (await cookies()).set(MFA_COOKIE, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    expires,
-  });
+  await setPendingCookie(token, expires);
 
+  // Sent after the response goes out, not before: how long the mail provider
+  // takes must not be observable, or it would distinguish this path from the
+  // no-email paths (e.g. a registration attempt on an existing account).
+  //
   // The pending challenge (DB row + cookie) is already committed above, so a
   // transport failure here must not crash an otherwise-successful
   // register/login request — the user can still recover via Resend. Log it
   // so a persistently broken mail transport is visible in the audit trail.
-  try {
-    await sendOtpEmail(email, code, purpose);
-    await audit({ actor: `account:${accountId}`, action: `auth.mfa.${purpose}.sent`, outcome: "success" });
-  } catch (err) {
-    await audit({
-      actor: `account:${accountId}`,
-      action: `auth.mfa.${purpose}.sent`,
-      outcome: "failure",
-      detail: `mail_send_failed: ${err instanceof Error ? err.message : String(err)}`,
-    });
-  }
+  after(async () => {
+    try {
+      await sendOtpEmail(email, code, purpose);
+      await audit({ actor: `account:${accountId}`, action: `auth.mfa.${purpose}.sent`, outcome: "success" });
+    } catch (err) {
+      await audit({
+        actor: `account:${accountId}`,
+        action: `auth.mfa.${purpose}.sent`,
+        outcome: "failure",
+        detail: `mail_send_failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  });
 
   return demoRevealOtp ? code : null;
+}
+
+// ---------------------------------------------------------------------------
+// Decoy challenges (registration on an already-registered email)
+// ---------------------------------------------------------------------------
+
+/**
+ * Challenges with no account behind them, handed out when someone registers
+ * an email that already has an account (SEC-002).
+ *
+ * The requester gets the same response and the same pending cookie as a real
+ * signup, and the verify/resend endpoints then behave identically too: wrong
+ * codes count toward the same 5-attempt limit and resend succeeds. Only the
+ * mailbox owner could tell the difference — and they are emailed a notice
+ * instead of a code. A decoy can never produce a session: there is no code
+ * that completes it and no account to attach a session to.
+ *
+ * In memory only (per-process, like the other limiters — see T-03).
+ */
+const decoyChallenges = new Map<string, { attempts: number; expiresAt: number }>();
+const MAX_DECOYS = 10_000;
+
+function setPendingCookie(token: string, expires: Date): Promise<void> {
+  return cookies().then((jar) => {
+    jar.set(MFA_COOKIE, token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      expires,
+    });
+  });
+}
+
+export async function startDecoyChallenge(): Promise<void> {
+  const now = Date.now();
+  for (const [key, d] of decoyChallenges) {
+    if (d.expiresAt <= now) decoyChallenges.delete(key);
+  }
+  while (decoyChallenges.size >= MAX_DECOYS) {
+    const oldest = decoyChallenges.keys().next().value;
+    if (oldest === undefined) break;
+    decoyChallenges.delete(oldest);
+  }
+  const token = generateSessionToken();
+  const expires = new Date(now + MFA_TTL_MS);
+  decoyChallenges.set(hashSessionToken(token), { attempts: 0, expiresAt: expires.getTime() });
+  await setPendingCookie(token, expires);
+}
+
+function getDecoy(tokenHash: string) {
+  const d = decoyChallenges.get(tokenHash);
+  if (!d) return null;
+  if (d.expiresAt <= Date.now()) {
+    decoyChallenges.delete(tokenHash);
+    return null;
+  }
+  return d;
 }
 
 /** The account+purpose behind the browser's pending cookie, if still valid. */
@@ -289,6 +373,18 @@ export async function completeMfaChallenge(
   const db = await getDb();
   const pending = await getPendingChallenge();
   if (!pending) {
+    // A decoy (see startDecoyChallenge) answers exactly like a real challenge
+    // receiving a wrong code — every code is wrong, since none was issued.
+    const token = (await cookies()).get(MFA_COOKIE)?.value;
+    const decoy = token ? getDecoy(hashSessionToken(token)) : null;
+    if (decoy) {
+      decoy.attempts += 1;
+      if (decoy.attempts >= MAX_CODE_ATTEMPTS) {
+        decoyChallenges.delete(hashSessionToken(token!));
+        return { ok: false, error: "Too many incorrect codes. Please sign in again to get a new one.", status: 429 };
+      }
+      return { ok: false, error: "That code isn't right. Please check your email and try again.", status: 400 };
+    }
     return { ok: false, error: "Your code has expired. Please sign in again to get a new one.", status: 401 };
   }
 
@@ -318,7 +414,16 @@ export async function completeMfaChallenge(
 /** Re-issue the code for the browser's pending challenge (resend button). */
 export async function resendMfaCode(): Promise<{ ok: boolean; demoCode?: string }> {
   const pending = await getPendingChallenge();
-  if (!pending) return { ok: false };
+  if (!pending) {
+    // Decoy: "resend" succeeds like a real one (a fresh decoy, fresh attempts).
+    const token = (await cookies()).get(MFA_COOKIE)?.value;
+    if (token && getDecoy(hashSessionToken(token))) {
+      decoyChallenges.delete(hashSessionToken(token));
+      await startDecoyChallenge();
+      return { ok: true };
+    }
+    return { ok: false };
+  }
   const db = await getDb();
   const acct = await db.prepare("SELECT email FROM accounts WHERE id = ?").get<{ email: string }>(pending.accountId);
   if (!acct) return { ok: false };
