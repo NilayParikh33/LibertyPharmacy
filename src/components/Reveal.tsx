@@ -23,8 +23,16 @@ export default function Reveal({
   threshold = 0.15,
 }: {
   children: ReactNode;
-  /** Element to render. Use "li"/"section" etc. to keep markup semantic. */
-  as?: ElementType;
+  /**
+   * HTML element to render, e.g. "li"/"section" to keep markup semantic.
+   * Deliberately narrower than `ElementType`: this component always attaches
+   * a DOM ref, and a function component passed here would need to forward
+   * that ref itself or React drops it silently — breaking scroll-reveal for
+   * that element. `HTMLElementTagNameMap` keys always accept a ref, so
+   * restricting to them makes that failure mode impossible at the type
+   * level instead of relying on callers to remember not to pass one.
+   */
+  as?: keyof HTMLElementTagNameMap;
   /** Stagger offset in ms — pass index * 80 for a grid. */
   delay?: number;
   variant?: "up" | "fade" | "scale";
@@ -64,14 +72,23 @@ export default function Reveal({
   const variantClass =
     variant === "fade" ? "lp-reveal-fade" : variant === "scale" ? "lp-reveal-scale" : "";
 
+  // The public `as` prop is narrowed to HTMLElementTagNameMap keys precisely
+  // so a non-ref-forwarding component can never be passed in (see the prop's
+  // doc comment). TypeScript's JSX typing still tries to resolve `ref`
+  // against every tag's own element type when `Tag` is a literal union,
+  // which balloons into an unrelated SVG/HTML ref mismatch. This cast only
+  // widens what TSX uses to pick a render overload — it doesn't relax the
+  // prop callers see above.
+  const Component = Tag as ElementType;
+
   return (
-    <Tag
+    <Component
       ref={ref}
       className={`lp-reveal ${variantClass} ${className}`.trim()}
       data-revealed={revealed ? "true" : "false"}
       style={delay ? ({ "--lp-delay": `${delay}ms` } as React.CSSProperties) : undefined}
     >
       {children}
-    </Tag>
+    </Component>
   );
 }

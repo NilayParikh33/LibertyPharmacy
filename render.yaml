@@ -51,6 +51,14 @@ services:
       - key: APP_BASE_URL
         sync: false
 
+      # -- Client IP trust ----------------------------------------------
+      # How many proxies append to X-Forwarded-For before the app. Drives the
+      # per-IP rate limits and audit-log IPs (src/lib/request.ts). Confirm
+      # after first deploy: log one request's X-Forwarded-For and check the
+      # client's real IP is this many entries from the right (SEC-015).
+      - key: TRUSTED_PROXY_HOPS
+        value: "1"
+
       # -- Database --------------------------------------------------------
       # A database is REQUIRED for the site to serve any page at all: the root
       # layout reads site settings from it (getSiteSettings in src/lib/site.ts),
@@ -152,3 +160,11 @@ databases:
     user: appuser
     region: ohio      # must match the service's region above
     plan: basic-256mb
+    # Reachable only from Render's private network (the web service above).
+    # Without this key a Render database accepts connections from ANY IP on
+    # the internet, protected only by its password (SEC-013). Add specific
+    # CIDRs here if an operator ever needs direct access, e.g.:
+    #   ipAllowList:
+    #     - source: 203.0.113.4/32
+    #       description: pharmacy office
+    ipAllowList: []

@@ -505,6 +505,8 @@ it is a required specification with no "addressable" flexibility.*
 
 ## 7A. Remediation Log — 2026-08-27
 
+> **2026-09-25:** an application-layer audit (per-endpoint OWASP testing) found and fixed 14 further issues — see [`SECURITY-AUDIT.md`](SECURITY-AUDIT.md). T-03 below still applies: the new rate limiters are also per-process.
+
 Recorded here so the closure of each finding is evidenced rather than
 asserted. Verification was performed against the production environment
 unless stated otherwise.

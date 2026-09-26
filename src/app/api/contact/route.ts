@@ -3,6 +3,8 @@ import { z } from "zod";
 import { getDb } from "@/lib/db";
 import { encryptPHI } from "@/lib/crypto";
 import { sendContactEmail } from "@/lib/mail";
+import { getClientIp } from "@/lib/request";
+import { createRateLimiter } from "@/lib/rate-limit";
 
 /**
  * Contact form endpoint — HIPAA-conscious by design.
@@ -37,7 +39,18 @@ const phiPatterns: Array<{ re: RegExp; label: string }> = [
   { re: /\b(diagnos(is|ed)|prescri(bed|ption)|medication list)\b/i, label: "medical details" },
 ];
 
+// Unauthenticated and each submission stores a row and emails the pharmacy,
+// so without a cap one client could flood both (SEC-003).
+const limiter = createRateLimiter({ limit: 5, windowMs: 10 * 60 * 1000 });
+
 export async function POST(request: Request) {
+  if (limiter.hit(getClientIp(request))) {
+    return NextResponse.json(
+      { error: "You've sent several messages in a short time. Please wait a few minutes, or call us." },
+      { status: 429 }
+    );
+  }
+
   let body: unknown;
   try {
     body = await request.json();

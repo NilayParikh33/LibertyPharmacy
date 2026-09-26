@@ -1,8 +1,12 @@
 import type { Metadata } from "next";
+// Self-hosted variable font: bundled into /_next/static at build time, so it is
+// served from our own origin (CSP font-src 'self') with no request to Google.
+import "@fontsource-variable/plus-jakarta-sans";
 import "./globals.css";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { getSiteSettings } from "@/lib/site";
+import { SavedListProvider } from "@/lib/saved-list";
 
 // Site content (nav footer, contact info, etc.) is admin-editable and read
 // from the database on every request — the whole app must render
@@ -42,9 +46,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         </noscript>
       </head>
       <body className="flex min-h-screen flex-col">
-        <Header siteName={site.name} />
-        <main className="flex-1">{children}</main>
-        <Footer settings={site} />
+        <SavedListProvider phone={site.phone} phoneHref={site.phoneHref}>
+          <Header siteName={site.name} />
+          <main className="flex-1">{children}</main>
+          <Footer settings={site} />
+        </SavedListProvider>
       </body>
     </html>
   );

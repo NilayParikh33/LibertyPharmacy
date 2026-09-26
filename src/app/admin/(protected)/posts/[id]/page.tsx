@@ -1,10 +1,17 @@
 import { notFound } from "next/navigation";
 import { getPostById } from "@/lib/posts";
 import PostForm from "@/components/admin/PostForm";
+import { requireAdmin } from "@/lib/admin-auth";
+import { parseId } from "@/lib/ids";
 
+// Authorization is enforced here, not only in the (protected) layout: with
+// partial rendering a soft navigation re-renders just this page segment, so a
+// layout-level check alone can be skipped (see SECURITY-AUDIT.md, SEC-001).
 export default async function AdminEditPostPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const post = await getPostById(Number(id));
+  await requireAdmin();
+  const id = parseId((await params).id);
+  if (id === null) notFound();
+  const post = await getPostById(id);
   if (!post) notFound();
 
   return (
