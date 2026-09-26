@@ -1,6 +1,5 @@
 import nodemailer from "nodemailer";
 import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
-import { demoFlagEnabled } from "./deployment";
 
 /**
  * Outbound email seam.
@@ -69,10 +68,9 @@ const fromAddress = sesTransporter ? sesFromEmail! : gmailUser;
  *
  * It is opt-in, exact-match "true", and unreachable whenever a real
  * transport is configured (those paths return before reaching it).
- * Unset it before this deployment carries anything but fake data. It is
- * refused outright on the AWS/RDS production deployment (see deployment.ts).
+ * Unset it before this deployment carries anything but fake data.
  */
-const demoLogCodes = demoFlagEnabled("DEMO_LOG_OTP_CODES");
+const demoLogCodes = process.env.DEMO_LOG_OTP_CODES === "true";
 // Name kept for continuity with what is already deployed and documented; the
 // flag governs every send path below, not only the OTP one.
 

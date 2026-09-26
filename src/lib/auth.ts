@@ -13,7 +13,6 @@ import {
 } from "./crypto";
 import { sendOtpEmail, sendPasswordResetEmail, sendAccountExistsEmail } from "./mail";
 import { createRateLimiter } from "./rate-limit";
-import { demoFlagEnabled } from "./deployment";
 
 /**
  * Authentication + patient-record service.
@@ -229,9 +228,8 @@ export type MfaPurpose = "email_verify" | "login_mfa";
  *
  * Opt-in, exact-match "true", and deliberately separate from
  * DEMO_LOG_OTP_CODES so the log-only behaviour can be used without this one.
- * Refused outright on the AWS/RDS production deployment (see deployment.ts).
  */
-const demoRevealOtp = demoFlagEnabled("DEMO_SHOW_OTP_ON_SCREEN");
+const demoRevealOtp = process.env.DEMO_SHOW_OTP_ON_SCREEN === "true";
 
 /**
  * Start (or restart) a one-time-code challenge for an account: stores hashed
