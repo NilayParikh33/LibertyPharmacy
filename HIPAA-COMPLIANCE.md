@@ -27,6 +27,10 @@ implemented in code:
 - **Audit controls (§164.312(b))** — `audit_log` records every registration,
   login success/failure, and patient-record read with actor, action, outcome,
   IP, and timestamp. No PHI values are ever written to the log.
+- **Refill / transfer requests** — `rx_requests.details` (drug names, Rx
+  numbers, the other pharmacy) and `staff_note` are AES-256-GCM ciphertext.
+  `audit_log` records create/update/list events with ids, kind and status only.
+  Staff notification email is content-free. Nothing is sent to DRX.
 - **Session security** — 30-minute expiry, httpOnly + SameSite=Lax + Secure
   cookies, tokens stored only as SHA-256 hashes.
 - **Access safeguards** — generic auth errors (no account enumeration),

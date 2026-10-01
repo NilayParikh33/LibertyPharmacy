@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 const services: { title: string; body: string; icon: IconName }[] = [
   {
     title: "Prescription Refills",
-    body: "Quick, accurate refills — most ready in about 15 minutes. Online refill requests are coming soon through our patient portal.",
+    body: "Quick, accurate refills — most ready in about 15 minutes. Request refills and prescription transfers online through our patient portal.",
     icon: "pill",
   },
   {

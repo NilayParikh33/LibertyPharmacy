@@ -31,7 +31,9 @@ npm run build    # production build
 | `/blog`, `/blog/[slug]` | Static blog (swap `src/lib/posts.ts` for a CMS later) |
 | `/locations` | Address, hours, map link |
 | `/contact` | Contact info + no-PHI general inquiry form |
-| `/portal` | Patient portal placeholder — auto-activates when DRX is configured |
+| `/portal` | Patient portal — sign in, request refills/transfers, see request status |
+| `/portal/refill`, `/portal/transfer` | Refill and prescription-transfer request forms (signed-in patients) |
+| `/admin/requests` | Staff queue for those requests (admin + MFA) |
 | `/privacy-policy` | Website privacy policy |
 | `/hipaa-notice` | HIPAA Notice of Privacy Practices (template — legal review required) |
 
@@ -58,6 +60,16 @@ Every animation is disabled under `prefers-reduced-motion`. Scroll-revealed
 content is force-shown by a `<noscript>` style in `src/app/layout.tsx` and by a
 fallback in `Reveal.tsx`, so **motion can never leave content invisible** —
 keep that guarantee if you add new effects.
+
+## Refill and transfer requests
+
+Patients file refill and transfer requests from the portal. They are stored
+encrypted (`rx_requests` table, `src/lib/rx-requests.ts`), audited, and
+announced to the pharmacy by a content-free email; staff work them in
+`/admin/requests` and mark them in progress / completed / cancelled. Nothing
+is sent to DRX: the DRX Connect API is a clinic-scheduling API with no
+refill or transfer endpoints. Set `NEXT_PUBLIC_DRX_STORE_URL` (at build time)
+to show an "Or use our DRX refill site" link on the portal's refill card.
 
 ## DRX integration (future)
 

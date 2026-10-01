@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic";
 const links = [
   { label: "Dashboard", href: "/admin" },
   { label: "Messages", href: "/admin/messages" },
+  { label: "Rx Requests", href: "/admin/requests" },
   { label: "Blog Posts", href: "/admin/posts" },
   { label: "Site Settings", href: "/admin/settings" },
 ];
