@@ -1,6 +1,13 @@
 /**
  * DRX integration seam — placeholder module.
  *
+ * Current state: patients file refill and transfer requests on our own site
+ * (src/lib/rx-requests.ts) and staff work them in the admin panel; nothing is
+ * sent to DRX. The only live DRX touchpoint is the public storefront link
+ * (NEXT_PUBLIC_DRX_STORE_URL) shown on the portal. The DRX Connect API we
+ * hold a key for is a clinic-scheduling API (doctors, slots, appointments),
+ * not a pharmacy one, so it cannot carry refills or transfers.
+ *
  * Liberty Pharmacy plans to integrate with the DRX white-label pharmacy
  * platform (drxrefill.com / drxapp.com) for the patient portal, online
  * refills, and the store. Until that integration is built, every function

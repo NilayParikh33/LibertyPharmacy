@@ -337,6 +337,19 @@ happened. This is what HIPAA calls "audit controls," and it's what lets the
 pharmacy answer "who looked at this patient's record, and when?" after the
 fact.
 
+### 6.6a Refill and transfer requests
+
+Signed-in patients use `/portal/refill` and `/portal/transfer`. Each request
+is one encrypted JSON blob in the `rx_requests` table
+(`src/lib/rx-requests.ts`); who is asking always comes from the session, never
+the form. Staff see a queue at `/admin/requests` (oldest first), process each
+request in their dispensing system, and mark it in progress / completed /
+cancelled; the patient sees that status on `/portal`. The "new request" email
+says only that something is waiting — no names, drugs or numbers — because the
+mail transport is not yet under a BAA. Limits: 10 requests per account per
+hour, 20 open at once. **Nothing is sent to DRX**: the DRX Connect API is a
+clinic-scheduling API with no refill/transfer endpoints.
+
 ### 6.7 Logging out
 
 `LogoutButton.tsx` calls `POST /api/auth/logout`, which deletes the session
@@ -356,6 +369,8 @@ kept a copy of the cookie) and clears the cookie in the browser.
 | `/api/auth/logout` | POST | End the session | No (no-op if already signed out) |
 | `/api/auth/me` | GET | Return the signed-in patient's basic profile | Yes (401 if not signed in) |
 | `/api/contact` | POST | Validate + PHI-screen a general inquiry (stores nothing) | No |
+| `/api/portal/requests` | POST | File a refill or prescription-transfer request (stored encrypted, staff emailed a content-free notice) | Yes (patient session) |
+| `/api/admin/requests/[id]` | PATCH | Staff set a request's status and/or internal note | Yes (admin session) |
 
 All routes validate their input with `zod` and return
 `{ error: "..." }` with a non-200 status on failure, or `{ ok: true, ... }`
@@ -479,8 +494,9 @@ upcoming — are now built. What's still ahead per `HIPAA-COMPLIANCE.md` and
 §15 below: moving OTP email delivery off consumer Gmail onto a BAA-covered
 provider (AWS SES), moving `PHI_ENCRYPTION_KEY` into a managed secret store,
 optional additional MFA methods (e.g. SMS/authenticator app) if DRX
-supports them, and the real DRX platform integration (refills, transfers,
-medication history) once a signed BAA is in place with DRX. `src/lib/drx.ts`
+supports them, and a real DRX pharmacy-platform integration (automatic refills/transfers,
+medication history) once DRX confirms a pharmacy API and a BAA is signed
+(refills and transfers are already handled in-house, §6.6a). `src/lib/drx.ts`
 is the seam where that integration will plug in — the portal already stores
 patient data in the exact shape DRX expects (see the field-mapping table in
 `HIPAA-COMPLIANCE.md`), so that migration should be a straightforward 1:1

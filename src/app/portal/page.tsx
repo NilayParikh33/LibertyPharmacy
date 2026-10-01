@@ -4,6 +4,8 @@ import PageHero from "@/components/PageHero";
 import LogoutButton from "@/components/LogoutButton";
 import { getSiteSettings } from "@/lib/site";
 import { getSessionAccountId, getPatientProfile } from "@/lib/auth";
+import { listPatientRequests, type RxStatus } from "@/lib/rx-requests";
+import { drxConfig } from "@/lib/drx";
 
 export const metadata: Metadata = {
   title: "Patient Portal",
@@ -17,10 +19,24 @@ export const dynamic = "force-dynamic";
  * Patient Portal.
  *
  * Signed out → sign-in / registration entry points.
- * Signed in  → account dashboard. Refills/transfers remain "coming soon"
- * until the DRX integration phase; the local patient record already matches
- * DRX fields so accounts created now carry over 1:1 (see src/lib/db.ts).
+ * Signed in  → account dashboard: refill and transfer requests (filed here,
+ * worked by staff in the admin panel — see src/lib/rx-requests.ts) and the
+ * patient's recent requests with their status. Medication history and
+ * messaging remain "coming soon". The local patient record already matches
+ * DRX fields (see src/lib/db.ts).
  */
+
+const statusLabel: Record<RxStatus, { text: string; cls: string }> = {
+  new: { text: "Received", cls: "bg-navy-50 text-navy-800" },
+  in_progress: { text: "In progress", cls: "bg-amber-50 text-amber-800" },
+  completed: { text: "Completed", cls: "bg-green-50 text-green-800" },
+  cancelled: { text: "Cancelled", cls: "bg-slate-100 text-slate-600" },
+};
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+}
+
 export default async function PortalPage({
   searchParams,
 }: {
@@ -32,14 +48,23 @@ export default async function PortalPage({
   const site = await getSiteSettings();
 
   if (profile) {
-    const comingSoon = [
+    const requests = await listPatientRequests(profile.patientId);
+    // The pharmacy's DRX refill site, when configured: an ordinary outbound
+    // link, so nothing from this site is sent to DRX.
+    const drxStore = drxConfig.storeUrl?.startsWith("https://") ? drxConfig.storeUrl : null;
+    const actions: { title: string; body: string; href?: string; cta?: string; altHref?: string | null }[] = [
       {
         title: "Refill a Prescription",
         body: "Request refills online in a few clicks and pick them up or have them delivered.",
+        href: "/portal/refill",
+        cta: "Request a refill",
+        altHref: drxStore,
       },
       {
         title: "Transfer a Prescription",
         body: "Tell us where your prescriptions are and we handle the rest.",
+        href: "/portal/transfer",
+        cta: "Transfer a prescription",
       },
       {
         title: "Medication History",
@@ -87,21 +112,61 @@ export default async function PortalPage({
             </div>
 
             <div className="grid gap-6 sm:grid-cols-2">
-              {comingSoon.map((f) => (
-                <div key={f.title} className="card flex flex-col">
-                  <h3 className="text-base font-semibold text-navy-900">{f.title}</h3>
-                  <p className="mt-2 flex-1 text-sm leading-6 text-slate-600">{f.body}</p>
-                  <button
-                    type="button"
-                    disabled
-                    className="mt-4 inline-flex cursor-not-allowed items-center gap-2 self-start rounded-lg bg-slate-200 px-5 py-3 text-sm font-semibold text-slate-500"
-                    title="Launching with our online pharmacy platform"
-                  >
-                    Coming soon
-                  </button>
+              {actions.map((a) => (
+                <div key={a.title} className="card flex flex-col">
+                  <h3 className="text-base font-semibold text-navy-900">{a.title}</h3>
+                  <p className="mt-2 flex-1 text-sm leading-6 text-slate-600">{a.body}</p>
+                  {a.href ? (
+                    <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+                      <Link href={a.href} className="btn-primary self-start">
+                        {a.cta}
+                      </Link>
+                      {a.altHref && (
+                        <a
+                          href={a.altHref}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm font-medium text-navy-700 underline"
+                        >
+                          Or use our DRX refill site
+                        </a>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled
+                      className="mt-4 inline-flex cursor-not-allowed items-center gap-2 self-start rounded-lg bg-slate-200 px-5 py-3 text-sm font-semibold text-slate-500"
+                      title="Coming soon"
+                    >
+                      Coming soon
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
+
+            {requests.length > 0 && (
+              <div className="mt-12">
+                <h2 className="text-lg font-semibold text-navy-900">Your recent requests</h2>
+                <ul className="mt-4 divide-y divide-slate-200 rounded-2xl border border-slate-200 bg-white">
+                  {requests.map((r) => (
+                    <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm">
+                      <div>
+                        <p className="font-medium text-navy-900">
+                          {r.kind === "refill" ? "Refill" : "Transfer"} request #{r.id}
+                        </p>
+                        <p className="text-slate-600">{r.summary}</p>
+                        <p className="text-xs text-slate-500">Sent {formatDate(r.createdAt)}</p>
+                      </div>
+                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusLabel[r.status].cls}`}>
+                        {statusLabel[r.status].text}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <div className="mt-12 rounded-xl border border-slate-200 bg-slate-50 p-6 text-sm leading-6 text-slate-600">
               Need something now? Call us at{" "}

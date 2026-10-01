@@ -343,6 +343,26 @@ async function init(): Promise<AppDb> {
     );
     CREATE INDEX IF NOT EXISTS idx_contact_messages_created ON contact_messages(created_at);
 
+    -- Refill and prescription-transfer requests from signed-in patients, worked
+    -- by pharmacy staff in the admin panel (src/lib/rx-requests.ts). Which
+    -- prescriptions someone takes, and which pharmacy they come from, is health
+    -- information, so everything the patient typed lives in the one encrypted
+    -- JSON column; only operational columns (ids, kind, status, timestamps)
+    -- stay plaintext. Deleting a patient deletes their requests with them.
+    CREATE TABLE IF NOT EXISTS rx_requests (
+      id          SERIAL PRIMARY KEY,
+      patient_id  INTEGER NOT NULL REFERENCES patients(patient_id) ON DELETE CASCADE,
+      kind        TEXT NOT NULL CHECK (kind IN ('refill','transfer')),
+      details     TEXT NOT NULL,                 -- [enc] JSON of what the patient submitted
+      status      TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','in_progress','completed','cancelled')),
+      staff_note  TEXT,                          -- [enc] internal note, never shown to the patient
+      handled_by  TEXT,                          -- admin username of the last status change
+      created_at  TEXT NOT NULL DEFAULT (${NOW_ISO}),
+      updated_at  TEXT NOT NULL DEFAULT (${NOW_ISO})
+    );
+    CREATE INDEX IF NOT EXISTS idx_rx_requests_patient ON rx_requests(patient_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_rx_requests_status ON rx_requests(status, created_at);
+
     -- Blog content, admin-managed. sections_json holds Post["sections"].
     CREATE TABLE IF NOT EXISTS posts (
       id            SERIAL PRIMARY KEY,
