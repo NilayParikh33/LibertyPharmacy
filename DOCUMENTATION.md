@@ -347,8 +347,11 @@ request in their dispensing system, and mark it in progress / completed /
 cancelled; the patient sees that status on `/portal`. The "new request" email
 says only that something is waiting — no names, drugs or numbers — because the
 mail transport is not yet under a BAA. Limits: 10 requests per account per
-hour, 20 open at once. **Nothing is sent to DRX**: the DRX Connect API is a
-clinic-scheduling API with no refill/transfer endpoints.
+hour, 20 open at once. **Nothing is sent to DRX yet.** The DRX External API
+(getdrx.readme.io) accepts refills via `POST /refill-request`; wiring that in
+is planned once the pharmacy issues a key and the BAA is confirmed (details in
+`src/lib/drx.ts`). It has no transfer-in endpoint, so transfers stay in the
+staff queue. The separate DRX Connect key is clinic scheduling only.
 
 ### 6.7 Logging out
 

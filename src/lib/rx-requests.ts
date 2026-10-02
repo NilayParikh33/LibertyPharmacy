@@ -6,11 +6,12 @@ import { encryptPHI, decryptPHI } from "./crypto";
  *
  * Patients submit these from the portal (src/app/api/portal/requests); the
  * pharmacy works them from the admin panel (src/app/admin/(protected)/requests).
- * Nothing here talks to DRX: the DRX Connect API we hold a key for covers
- * clinic appointments, not prescriptions, so staff process each request in
- * their dispensing system and mark it done here. If DRX later offers a
- * prescription API, the place to call it is the end of `createRxRequest`
- * (the request is already stored by then, so a DRX outage cannot lose it).
+ * Nothing here talks to DRX yet: staff process each request in their
+ * dispensing system and mark it done here. The DRX External API does accept
+ * refills (POST /refill-request, see src/lib/drx.ts); once a key and BAA are
+ * in place, call it at the end of `createRxRequest` for refills only (the
+ * request is already stored by then, so a DRX outage cannot lose it).
+ * Transfers have no DRX endpoint and always stay in the staff queue.
  *
  * PHI handling (see HIPAA-COMPLIANCE.md):
  *  - Everything the patient typed is one encrypted JSON blob; see the
