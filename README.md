@@ -67,10 +67,15 @@ Patients file refill and transfer requests from the portal. They are stored
 encrypted (`rx_requests` table, `src/lib/rx-requests.ts`), audited, and
 announced to the pharmacy by a content-free email; staff work them in
 `/admin/requests` and mark them in progress / completed / cancelled. Nothing
-is sent to DRX yet. The DRX External API accepts refills
-(`POST /refill-request`) and that hookup is planned (see `src/lib/drx.ts`);
-it has no transfer-in endpoint, so transfers always stay in the staff queue.
-(The separate DRX Connect key is clinic scheduling only.) Set `NEXT_PUBLIC_DRX_STORE_URL` (at build time)
+goes to DRX unless `DRX_ENABLED=true` (set it only after the DRX BAA
+is signed). When it is on, patients link their account to their pharmacy
+record with one Rx number (checked against their name and date of birth) and
+see their medications at `/portal/medications`; refills are also forwarded to the DRX External API
+(`POST /refill-request`, `src/lib/drx-refills.ts`) after they are stored;
+anything DRX does not accept stays in the staff queue, with DRX's reason shown
+in `/admin/requests` and a "Send to DRX again" button. DRX has no transfer-in
+endpoint, so transfers always stay with staff. (The separate DRX Connect key
+is clinic scheduling only.) Set `NEXT_PUBLIC_DRX_STORE_URL` (at build time)
 to show an "Or use our DRX refill site" link on the portal's refill card.
 
 ## DRX integration (future)

@@ -347,11 +347,73 @@ request in their dispensing system, and mark it in progress / completed /
 cancelled; the patient sees that status on `/portal`. The "new request" email
 says only that something is waiting — no names, drugs or numbers — because the
 mail transport is not yet under a BAA. Limits: 10 requests per account per
-hour, 20 open at once. **Nothing is sent to DRX yet.** The DRX External API
-(getdrx.readme.io) accepts refills via `POST /refill-request`; wiring that in
-is planned once the pharmacy issues a key and the BAA is confirmed (details in
-`src/lib/drx.ts`). It has no transfer-in endpoint, so transfers stay in the
-staff queue. The separate DRX Connect key is clinic scheduling only.
+hour, 20 open at once.
+
+**DRX.** With `DRX_API_BASE_URL` and `DRX_API_KEY` set, `/admin/requests`
+shows whether the key works (`GET /heartbeat`, no PHI). Nothing else touches
+DRX until `DRX_ENABLED=true` (set only after the DRX BAA).
+
+*Linking an account to its DRX patient* (`src/lib/drx-link.ts`,
+`patients.drx_patient_id`). There is no shared id and no DRX patient login.
+The patient gives one Rx number from a label; `GET /prescription/{rx}` tells
+us which DRX patient it belongs to. The link is made only if:
+- the **date of birth** on their verified account equals DRX's exactly (the
+  real check; registration tells existing patients to enter it exactly as the
+  pharmacy has it), and
+- the names share **at least one word**, in any order or case ("Kush
+  Chaudhary" matches "CHAUDHARY, VIJAY KUSH"). This light check stays because
+  Rx numbers are sequential: with date of birth alone, someone could register
+  with a common birth date and try numbers.
+
+`/patient-match` is not used: it needs an exact name. The key therefore needs
+the `prescription` permission (not `patientmatch`); only the patient id, name
+and date of birth are kept from that response. Three ways in:
+- the patient enters one Rx number on `/portal/medications` (5 tries per
+  account per hour, 20 per address; every failure gets the same message so
+  it can't confirm whether an Rx exists);
+- automatically from the Rx numbers on their first refill request;
+- staff, after checking the patient by phone, use "Link by hand" on
+  `/admin/requests`. The id is refused unless DRX's date of birth for it
+  matches (`/profile`), so a typo can't expose another patient's medications.
+
+*New patients.* Someone who has never filled at Liberty has no DRX record,
+and the site does not create one (that needs DRX's broad `patient`
+permission). Until they are linked, the portal and refill page point them to
+**Transfer a prescription** instead. Staff only work in DRX: they add the
+patient and fill the transfer as usual, with nothing to do on this site. The
+transfer confirmation tells the patient to keep their label, and once they
+have a transfer on file the portal home asks for the Rx number from their
+first Liberty label, which links them (same checks as above). "Link by hand"
+in the admin queue is only for a patient who calls for help. When staff or
+the system make the link,
+the patient gets a content-free email and a one-time portal banner saying they
+can now refill online (`sendRecordConnectedEmail`, `patients.drx_ready_notice`);
+a patient who linked themselves gets neither.
+
+*Medication list* (`/portal/medications`). Linked patients see their
+prescriptions read live from `GET /profile/{id}` on each visit; nothing is
+stored. Every prescription is checked to belong to that DRX patient, and only
+drug, directions, prescriber, dates, quantity left and last-fill status are
+shown (no copay, insurance or NDC). Prescriptions that can be refilled get a
+tick-box; expired, used-up and inactive ones say why. Ticked items are sent as
+an ordinary refill request (below). Each view is audited by id and count.
+
+*Refill forwarding* (`src/lib/drx-refills.ts`), after the patient already has
+their answer:
+
+1. The account is linked as above, if it isn't already.
+2. `POST /refill-request` is sent with that id and our stored date of birth;
+   DRX rejects any Rx that isn't that patient's. Rx numbers that aren't
+   numeric are left for staff.
+3. The per-Rx outcome is stored encrypted on the request (`drx_status`,
+   `drx_result`). If DRX accepted everything the request moves to "in
+   progress" (handled by `DRX`); otherwise it stays "new" for staff, who see
+   DRX's reasons and can press "Send to DRX again" (already-accepted Rx are
+   never resent). The patient sees DRX's pickup time, labelled as an estimate.
+
+Transfers have no DRX endpoint and always stay with staff. Audit entries
+(`drx.refill.forward`, `admin.rx_request.drx_resend`) carry ids and counts
+only. The separate DRX Connect key is clinic scheduling only.
 
 ### 6.7 Logging out
 

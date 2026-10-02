@@ -12,11 +12,14 @@ export default function RequestSent({
   id,
   phone,
   phoneHref,
+  next,
 }: {
   title: string;
   id: number;
   phone: string;
   phoneHref: string;
+  /** Optional extra "what happens next" line. */
+  next?: string;
 }) {
   return (
     <div role="status" className="card space-y-4">
@@ -25,6 +28,7 @@ export default function RequestSent({
         Your request number is <strong className="text-navy-900">#{id}</strong>. Our pharmacists will start on it during
         business hours, and you can follow its status on your portal page.
       </p>
+      {next && <p className="text-sm leading-6 text-slate-700">{next}</p>}
       <p className="text-sm leading-6 text-slate-600">
         Need it sooner? Call us at{" "}
         <a href={phoneHref} className="font-semibold text-navy-700 underline">

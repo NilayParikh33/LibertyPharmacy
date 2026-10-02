@@ -120,7 +120,20 @@ migration later:
       associate (or subcontractor) when handling PHI on the pharmacy's behalf.
 - [ ] Keep all DRX API calls **server-side** (`src/lib/drx.ts` + API routes);
       never expose API keys or PHI-bearing endpoints directly to the browser.
-- [ ] Add the DRX origin to `connect-src` in the CSP (`next.config.mjs`).
+- [x] No CSP change needed: DRX is called only from the server, never the
+      browser, so `connect-src` stays `'self'`.
+- [x] Medication lists are read live from DRX and never stored; only the
+      minimum fields are shown; each view is audited (`patient.medications.view`).
+- [x] Account-to-DRX linking needs an Rx number, the exact date of birth on the
+      verified account, and one name word in common; attempts are rate-limited
+      and failures are indistinguishable. The `prescription` permission it uses
+      also returns prescriber and fill data; `drxPrescriptionOwner` keeps only
+      the patient id, name and date of birth.
+- [ ] Set `DRX_ENABLED=true` **only after the BAA is signed**. With
+      just the URL and key set, the admin panel checks the key (`/heartbeat`,
+      no PHI) and nothing else is sent.
+- [ ] The DRX key carries only `heartbeat`, `refillrequest`, `prescription`,
+      `patientprofile`, and is IP-restricted to the production server.
 - [ ] Tighten CSP: replace `'unsafe-inline'` in `script-src` with nonces
       before handling PHI in the browser.
 - [ ] **Authentication**: portal sessions must use secure, httpOnly,

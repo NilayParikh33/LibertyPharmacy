@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSessionAccountId } from "@/lib/auth";
 import { createRxRequest, getPatientIdForAccount, type RxRequestInput } from "@/lib/rx-requests";
 import { sendRxRequestEmail } from "@/lib/mail";
+import { forwardRefillToDrx } from "@/lib/drx-refills";
 import { getClientIp } from "@/lib/request";
 import { createRateLimiter } from "@/lib/rate-limit";
 
@@ -136,6 +137,12 @@ export async function POST(request: Request) {
       console.error("rx request: staff notification failed", err instanceof Error ? err.message : err)
     )
   );
+  // Refills also go to DRX when that is switched on. Also after the response:
+  // the request is already stored, so DRX being slow or down only means staff
+  // handle it from the queue as before. forwardRefillToDrx never throws.
+  if (input.kind === "refill") {
+    after(() => forwardRefillToDrx(result.id).then(() => undefined));
+  }
 
   return NextResponse.json({ ok: true, id: result.id });
 }

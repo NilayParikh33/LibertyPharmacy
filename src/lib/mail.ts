@@ -235,6 +235,54 @@ export async function sendAccountExistsEmail(to: string, signInUrl: string, forg
   throw new Error("Email transport not configured — cannot send account notices in production.");
 }
 
+/**
+ * Tells a patient their portal account is now connected to their pharmacy
+ * record (src/lib/drx-link.ts), typically after their first transfer was
+ * filled. Content-free like the other patient mail: no medication, Rx number
+ * or anything from the record, only that the account is ready and a link to
+ * sign in, where everything else sits behind the login.
+ */
+export async function sendRecordConnectedEmail(to: string, portalUrl: string): Promise<void> {
+  const subject = "Your Liberty Pharmacy account is ready for online refills";
+  const text =
+    `Good news: your Liberty Pharmacy online account is now connected to your pharmacy record.\n\n` +
+    `Sign in to see your medications and request refills online: ${portalUrl}\n\n` +
+    `If you didn't expect this email, please call the pharmacy.\n\n` +
+    NO_REPLY_NOTE;
+
+  if (transporter) {
+    await transporter.sendMail({
+      from: `"Liberty Pharmacy" <${fromAddress}>`,
+      to,
+      subject,
+      text,
+      html: `
+        <div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px">
+          <h2 style="color:#1b2a47;margin:0 0 16px">Liberty Pharmacy</h2>
+          <p style="color:#334155;font-size:15px;line-height:1.6">Good news: your online account is now connected to your pharmacy record. You can see your medications and request refills online.</p>
+          <p style="text-align:center;padding:8px 0">
+            <a href="${portalUrl}" style="display:inline-block;background:#1b2a47;color:#fff;text-decoration:none;font-weight:bold;padding:12px 28px;border-radius:8px">Sign in</a>
+          </p>
+          <p style="color:#64748b;font-size:13px;line-height:1.6">If you didn't expect this email, please call the pharmacy.</p>
+          <p style="color:#94a3b8;font-size:12px;line-height:1.6;border-top:1px solid #e2e8f0;padding-top:12px;margin-top:16px">${NO_REPLY_NOTE}</p>
+        </div>`,
+    });
+    return;
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`\n[mail:dev] To: ${to}\n[mail:dev] Subject: ${subject}\n`);
+    return;
+  }
+
+  if (demoLogCodes) {
+    demoLog("record-connected notice", to, portalUrl);
+    return;
+  }
+
+  throw new Error("Email transport not configured — cannot send account notices in production.");
+}
+
 export interface ContactMessageInput {
   firstName: string;
   lastName: string;

@@ -397,6 +397,24 @@ async function init(): Promise<AppDb> {
     );
   `);
 
+  // Columns added after the first launch. CREATE TABLE IF NOT EXISTS leaves an
+  // existing table alone, so these have to be added explicitly.
+  await db.exec(`
+    -- DRX's own patient id, found from an Rx number (src/lib/drx-link.ts). Not PHI on its own (an
+    -- opaque number), and lets later refills skip the match call.
+    ALTER TABLE patients ADD COLUMN IF NOT EXISTS drx_patient_id INTEGER;
+    -- When the link was made, and whether the portal still owes the patient a
+    -- one-time "you can refill online now" notice.
+    ALTER TABLE patients ADD COLUMN IF NOT EXISTS drx_linked_at TEXT;
+    ALTER TABLE patients ADD COLUMN IF NOT EXISTS drx_ready_notice INTEGER NOT NULL DEFAULT 0;
+    -- Outcome of forwarding a refill to DRX (src/lib/drx-refills.ts). NULL
+    -- means it was never tried (transfers, or DRX switched off).
+    ALTER TABLE rx_requests ADD COLUMN IF NOT EXISTS drx_status TEXT
+      CHECK (drx_status IN ('sent','partial','rejected','error','no_match'));
+    ALTER TABLE rx_requests ADD COLUMN IF NOT EXISTS drx_result TEXT; -- [enc] JSON DrxRefillOutcome[]
+    ALTER TABLE rx_requests ADD COLUMN IF NOT EXISTS drx_at TEXT;
+  `);
+
   // audit_log's index, guarded. In production the table is owned by a
   // different role than the application's, so that a compromised app can
   // append to the audit trail but never rewrite or erase it (finding T-07).

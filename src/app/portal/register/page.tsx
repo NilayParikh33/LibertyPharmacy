@@ -135,6 +135,14 @@ export default function RegisterPage() {
             {/* ----------------------------- Identity ----------------------------- */}
             <div className={sectionCls}>
               <h2 className="text-base font-semibold text-navy-900">About you</h2>
+              {/* Linking to the pharmacy record checks the date of birth exactly
+                  (src/lib/drx-link.ts), so say so before it is typed. */}
+              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+                <strong>Already a Liberty Pharmacy patient?</strong> Enter your name and{" "}
+                <strong>date of birth exactly as the pharmacy has them</strong>, the same as on your prescription
+                labels. We use them to connect this account to your pharmacy record so you can see your medications and
+                refill online. If the date of birth is different, we can&apos;t connect it.
+              </div>
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <div>
                   <label htmlFor="firstName" className={labelCls}>First name *</label>

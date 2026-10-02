@@ -5,7 +5,9 @@ import LogoutButton from "@/components/LogoutButton";
 import { getSiteSettings } from "@/lib/site";
 import { getSessionAccountId, getPatientProfile } from "@/lib/auth";
 import { listPatientRequests, type RxStatus } from "@/lib/rx-requests";
-import { drxConfig } from "@/lib/drx";
+import { drxConfig, isDrxEnabled } from "@/lib/drx";
+import { getDrxPatientId, takeDrxReadyNotice } from "@/lib/drx-link";
+import DrxLinkForm from "@/components/portal/DrxLinkForm";
 
 export const metadata: Metadata = {
   title: "Patient Portal",
@@ -37,6 +39,14 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
+/**
+ * DRX sends pharmacy-local wall-clock times with no zone. Parsing and printing
+ * in the same (server) zone leaves that wall-clock time unchanged.
+ */
+function formatPickup(local: string) {
+  return new Date(local).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
 export default async function PortalPage({
   searchParams,
 }: {
@@ -49,6 +59,11 @@ export default async function PortalPage({
 
   if (profile) {
     const requests = await listPatientRequests(profile.patientId);
+    // DRX connection state, only meaningful once DRX is switched on.
+    const drxOn = isDrxEnabled();
+    const linked = drxOn ? (await getDrxPatientId(profile.patientId)) !== null : false;
+    const justConnected = drxOn && linked ? await takeDrxReadyNotice(profile.patientId) : false;
+    const hasTransfer = requests.some((r) => r.kind === "transfer");
     // The pharmacy's DRX refill site, when configured: an ordinary outbound
     // link, so nothing from this site is sent to DRX.
     const drxStore = drxConfig.storeUrl?.startsWith("https://") ? drxConfig.storeUrl : null;
@@ -68,7 +83,9 @@ export default async function PortalPage({
       },
       {
         title: "Medication History",
-        body: "View your active prescriptions and past fills in one place.",
+        body: "View your active prescriptions and past fills in one place, and refill them in a tap.",
+        // Live once DRX is switched on (after the BAA); "coming soon" until then.
+        ...(isDrxEnabled() ? { href: "/portal/medications", cta: "View my medications" } : {}),
       },
       {
         title: "Messages",
@@ -91,6 +108,43 @@ export default async function PortalPage({
               >
                 <strong>Registration successful — welcome to Liberty Pharmacy!</strong>{" "}
                 Your account has been created and you&apos;re now signed in.
+              </div>
+            )}
+            {justConnected && (
+              <div
+                role="status"
+                className="mb-8 rounded-xl border border-green-200 bg-green-50 p-5 text-sm leading-6 text-green-800"
+              >
+                <strong>Your account is now connected to your pharmacy record.</strong> You can see your medications and
+                request refills online.{" "}
+                <Link href="/portal/medications" className="font-semibold underline">
+                  View my medications
+                </Link>
+              </div>
+            )}
+            {/* After a transfer, the patient connects themselves with the Rx
+                number on their first Liberty label: no staff step in this site. */}
+            {drxOn && !linked && hasTransfer && (
+              <div className="mb-8">
+                <DrxLinkForm
+                  phone={site.phone}
+                  phoneHref={site.phoneHref}
+                  title="Got your first Liberty Pharmacy label?"
+                  intro="Once we've filled your transferred prescription, enter the Rx number printed on its label. That connects your account to your pharmacy record, so you can see your medications and refill online. You only need to do this once."
+                />
+              </div>
+            )}
+            {drxOn && !linked && !hasTransfer && (
+              <div className="mb-8 rounded-xl border border-navy-100 bg-navy-50 p-5 text-sm leading-6 text-navy-900">
+                <strong>New to Liberty Pharmacy?</strong> Start by{" "}
+                <Link href="/portal/transfer" className="font-semibold underline">
+                  transferring your prescriptions
+                </Link>{" "}
+                to us. Once they&apos;re filled, you can refill online. Already fill with us?{" "}
+                <Link href="/portal/medications" className="font-semibold underline">
+                  Connect your record
+                </Link>{" "}
+                with the Rx number from any of our labels.
               </div>
             )}
             <div className="mb-10 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 p-6">
@@ -158,6 +212,13 @@ export default async function PortalPage({
                         </p>
                         <p className="text-slate-600">{r.summary}</p>
                         <p className="text-xs text-slate-500">Sent {formatDate(r.createdAt)}</p>
+                        {r.estimatedPickup && (
+                          // DRX requires this be presented as an estimate only.
+                          <p className="text-xs text-slate-500">
+                            Estimated ready: {formatPickup(r.estimatedPickup)} (an estimate only; we&apos;ll let you know
+                            when it&apos;s ready)
+                          </p>
+                        )}
                       </div>
                       <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusLabel[r.status].cls}`}>
                         {statusLabel[r.status].text}

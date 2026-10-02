@@ -9,6 +9,10 @@ import {
   type TransferDetails,
 } from "@/lib/rx-requests";
 import RxRequestControl from "@/components/admin/RxRequestControl";
+import DrxResendButton from "@/components/admin/DrxResendButton";
+import DrxLinkControl from "@/components/admin/DrxLinkControl";
+import { drxHeartbeat, isDrxApiConfigured, isDrxEnabled } from "@/lib/drx";
+import type { DrxRefillStatus } from "@/lib/drx-refills";
 
 const filters: { key: RxQueueFilter; label: string }[] = [
   { key: "open", label: "Open" },
@@ -28,6 +32,39 @@ const deliveryLabel: Record<string, string> = {
   delivery: "Local delivery",
   mail: "Mail",
 };
+
+const drxBadge: Record<DrxRefillStatus, { text: string; cls: string }> = {
+  sent: { text: "DRX accepted all", cls: "text-green-800" },
+  partial: { text: "DRX accepted some", cls: "text-amber-800" },
+  rejected: { text: "DRX did not accept", cls: "text-red-700" },
+  error: { text: "Could not reach DRX", cls: "text-red-700" },
+  no_match: { text: "No matching DRX patient", cls: "text-amber-800" },
+};
+
+/** One line on the DRX connection, from GET /heartbeat (no PHI involved). */
+async function DrxConnection() {
+  if (!isDrxApiConfigured()) {
+    return (
+      <p className="mt-4 rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-600">
+        DRX: not connected (no API key set). Requests stay here for staff.
+      </p>
+    );
+  }
+  const beat = await drxHeartbeat();
+  const sending = isDrxEnabled();
+  return (
+    <p
+      className={`mt-4 rounded-lg px-4 py-3 text-sm ${
+        beat.ok ? "bg-green-50 text-green-900" : "bg-red-50 text-red-900"
+      }`}
+    >
+      {beat.ok ? "DRX: connected. " : `DRX: connection failed (${beat.reason}). `}
+      {sending
+        ? "Refills are sent to DRX automatically; transfers stay here."
+        : "Patient data exchange is switched off (DRX_ENABLED), so nothing is sent to or read from DRX."}
+    </p>
+  );
+}
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString("en-US", {
@@ -75,6 +112,7 @@ export default async function AdminRequestsPage({
         Requests patients sent from the portal. Fill or transfer each one in your dispensing system, then mark it here so
         the patient can see its progress.
       </p>
+      <DrxConnection />
 
       <div className="mt-6 flex flex-wrap gap-2" role="tablist" aria-label="Request filter">
         {filters.map((f) => (
@@ -112,6 +150,13 @@ export default async function AdminRequestsPage({
                     <p className="text-sm text-slate-600">
                       DOB {r.patient.dateOfBirth} · {r.patient.cellPhone} · {r.patient.email}
                     </p>
+                    {isDrxEnabled() && <DrxLinkControl patientId={r.patient.id} drxPatientId={r.patient.drxPatientId} />}
+                    {isDrxEnabled() && r.kind === "transfer" && r.patient.drxPatientId === null && (
+                      <p className="mt-1 max-w-xl text-xs text-slate-500">
+                        Optional: patients connect themselves with the Rx number on their first label. Only link here if
+                        one calls for help (they&apos;ll get an email that they can refill online).
+                      </p>
+                    )}
                   </div>
                   <span className={`rounded-full px-3 py-1 text-xs font-semibold ${badge.cls}`}>{badge.text}</span>
                 </div>
@@ -142,6 +187,38 @@ export default async function AdminRequestsPage({
                     <Detail label="Details">The request details could not be read. Please contact the patient.</Detail>
                   )}
                 </dl>
+
+                {r.kind === "refill" && r.drx.status && (
+                  <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                    <p className={`font-semibold ${drxBadge[r.drx.status].cls}`}>
+                      {drxBadge[r.drx.status].text}
+                      {r.drx.at ? <span className="font-normal text-slate-500"> · {formatDate(r.drx.at)}</span> : null}
+                    </p>
+                    {r.drx.outcomes.length > 0 && (
+                      <ul className="mt-2 space-y-1 text-slate-700">
+                        {r.drx.outcomes.map((o, i) => (
+                          <li key={i}>
+                            {o.ok ? "✓" : "✗"} Rx {o.rxNumber}
+                            {o.itemName ? ` (${o.itemName})` : ""}: {o.message}
+                            {o.estimatedPickupTime ? ` · est. pickup ${formatDate(o.estimatedPickupTime)}` : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {r.drx.status === "no_match" && (
+                      <p className="mt-2 text-slate-600">
+                        DRX found no single patient with this name and Rx number and a matching date of birth. Call the
+                        patient to confirm who they are, use &ldquo;Link by hand&rdquo; above with their DRX patient ID,
+                        then send again, or fill it by hand.
+                      </p>
+                    )}
+                    {r.drx.status !== "sent" && isDrxEnabled() && (
+                      <div className="mt-3">
+                        <DrxResendButton id={r.id} />
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {r.handledBy && (
                   <p className="mt-3 text-xs text-slate-500">

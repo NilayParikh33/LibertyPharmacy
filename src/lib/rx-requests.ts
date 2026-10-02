@@ -1,17 +1,18 @@
 import { getDb, audit } from "./db";
 import { encryptPHI, decryptPHI } from "./crypto";
+import { readDrxResult, type DrxRefillStatus } from "./drx-refills";
+import type { DrxRefillOutcome } from "./drx";
 
 /**
  * Refill and prescription-transfer requests.
  *
  * Patients submit these from the portal (src/app/api/portal/requests); the
  * pharmacy works them from the admin panel (src/app/admin/(protected)/requests).
- * Nothing here talks to DRX yet: staff process each request in their
- * dispensing system and mark it done here. The DRX External API does accept
- * refills (POST /refill-request, see src/lib/drx.ts); once a key and BAA are
- * in place, call it at the end of `createRxRequest` for refills only (the
- * request is already stored by then, so a DRX outage cannot lose it).
- * Transfers have no DRX endpoint and always stay in the staff queue.
+ * Staff process each request in their dispensing system and mark it done
+ * here. When DRX is switched on, the portal route also forwards refills to
+ * DRX once they are stored (src/lib/drx-refills.ts) and the outcome is kept
+ * on the request; anything DRX did not accept stays with staff. Transfers have
+ * no DRX endpoint and always stay in the staff queue.
  *
  * PHI handling (see HIPAA-COMPLIANCE.md):
  *  - Everything the patient typed is one encrypted JSON blob; see the
@@ -124,6 +125,8 @@ export interface PatientRequestView {
   status: RxStatus;
   createdAt: string;
   summary: string;
+  /** Earliest pickup estimate DRX gave, if any. Show it as an estimate only. */
+  estimatedPickup: string | null;
 }
 
 /** A patient's own recent requests, newest first. */
@@ -131,16 +134,28 @@ export async function listPatientRequests(patientId: number, limit = 10): Promis
   const db = await getDb();
   const rows = await db
     .prepare(
-      `SELECT id, kind, status, details, created_at FROM rx_requests
+      `SELECT id, kind, status, details, drx_result, created_at FROM rx_requests
        WHERE patient_id = ? ORDER BY created_at DESC, id DESC LIMIT ?`
     )
-    .all<{ id: number; kind: RxKind; status: RxStatus; details: string; created_at: string }>(patientId, limit);
+    .all<{ id: number; kind: RxKind; status: RxStatus; details: string; drx_result: string | null; created_at: string }>(
+      patientId,
+      limit
+    );
   return rows.map((r) => ({
     id: r.id,
     kind: r.kind,
     status: r.status,
     createdAt: r.created_at,
     summary: summarize(r.kind, parseDetails(r.kind, r.details)),
+    // Only while the request is still moving: once staff close it the
+    // estimate is stale.
+    estimatedPickup:
+      r.status === "new" || r.status === "in_progress"
+        ? readDrxResult(r.drx_result)
+            .map((o) => o.estimatedPickupTime)
+            .filter((t): t is string => Boolean(t))
+            .sort()[0] ?? null
+        : null,
   }));
 }
 
@@ -160,6 +175,8 @@ export interface AdminRxRequest {
   staffNote: string;
   /** null when the stored value could not be decrypted. */
   details: RefillDetails | TransferDetails | null;
+  /** Outcome of forwarding to DRX; status null when it was never tried. */
+  drx: { status: DrxRefillStatus | null; at: string | null; outcomes: DrxRefillOutcome[] };
   patient: {
     id: number;
     name: string;
@@ -167,6 +184,8 @@ export interface AdminRxRequest {
     cellPhone: string;
     email: string;
     deliveryMethod: string;
+    /** Linked DRX patient id, or null when not linked yet. */
+    drxPatientId: number | null;
   };
 }
 
@@ -188,7 +207,9 @@ export async function listRxRequestsForAdmin(filter: RxQueueFilter): Promise<Adm
   const rows = await db
     .prepare(
       `SELECT r.id, r.kind, r.status, r.details, r.staff_note, r.handled_by, r.created_at, r.updated_at,
-              p.patient_id, p.first_name, p.last_name, p.date_of_birth, p.cell_phone, p.email, p.delivery_method
+              r.drx_status, r.drx_result, r.drx_at,
+              p.patient_id, p.first_name, p.last_name, p.date_of_birth, p.cell_phone, p.email, p.delivery_method,
+              p.drx_patient_id
        FROM rx_requests r JOIN patients p ON p.patient_id = r.patient_id
        ${QUEUE_WHERE[filter]}
        ORDER BY r.created_at ${order}, r.id ${order} LIMIT 200`
@@ -198,6 +219,9 @@ export async function listRxRequestsForAdmin(filter: RxQueueFilter): Promise<Adm
       kind: RxKind;
       status: RxStatus;
       details: string;
+      drx_status: DrxRefillStatus | null;
+      drx_result: string | null;
+      drx_at: string | null;
       staff_note: string | null;
       handled_by: string | null;
       created_at: string;
@@ -209,6 +233,7 @@ export async function listRxRequestsForAdmin(filter: RxQueueFilter): Promise<Adm
       cell_phone: string;
       email: string;
       delivery_method: string;
+      drx_patient_id: number | null;
     }>();
 
   return rows.map((r) => ({
@@ -220,6 +245,7 @@ export async function listRxRequestsForAdmin(filter: RxQueueFilter): Promise<Adm
     handledBy: r.handled_by,
     staffNote: r.staff_note ? safeDecrypt(r.staff_note) : "",
     details: parseDetails(r.kind, r.details),
+    drx: { status: r.drx_status, at: r.drx_at, outcomes: readDrxResult(r.drx_result) },
     patient: {
       id: r.patient_id,
       name: `${safeDecrypt(r.first_name)} ${safeDecrypt(r.last_name)}`,
@@ -227,6 +253,7 @@ export async function listRxRequestsForAdmin(filter: RxQueueFilter): Promise<Adm
       cellPhone: safeDecrypt(r.cell_phone),
       email: safeDecrypt(r.email),
       deliveryMethod: r.delivery_method,
+      drxPatientId: r.drx_patient_id,
     },
   }));
 }

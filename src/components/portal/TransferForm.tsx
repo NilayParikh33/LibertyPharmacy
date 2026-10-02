@@ -58,7 +58,15 @@ export default function TransferForm({ phone, phoneHref }: { phone: string; phon
   }
 
   if (sentId !== null) {
-    return <RequestSent title="Transfer request received" id={sentId} phone={phone} phoneHref={phoneHref} />;
+    return (
+      <RequestSent
+        title="Transfer request received"
+        id={sentId}
+        phone={phone}
+        phoneHref={phoneHref}
+        next="When you pick up or receive your prescription, keep the label: entering its Rx number on your portal page connects your account so you can refill online from then on."
+      />
+    );
   }
 
   return (
