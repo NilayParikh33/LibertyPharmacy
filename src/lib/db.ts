@@ -413,6 +413,12 @@ async function init(): Promise<AppDb> {
       CHECK (drx_status IN ('sent','partial','rejected','error','no_match'));
     ALTER TABLE rx_requests ADD COLUMN IF NOT EXISTS drx_result TEXT; -- [enc] JSON DrxRefillOutcome[]
     ALTER TABLE rx_requests ADD COLUMN IF NOT EXISTS drx_at TEXT;
+    -- The DRX To-Do that hands this request to staff inside DRX
+    -- (src/lib/drx-todos.ts), and how many times creating it has failed.
+    ALTER TABLE rx_requests ADD COLUMN IF NOT EXISTS drx_todo_id INTEGER;
+    ALTER TABLE rx_requests ADD COLUMN IF NOT EXISTS drx_todo_attempts INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE contact_messages ADD COLUMN IF NOT EXISTS drx_todo_id INTEGER;
+    ALTER TABLE contact_messages ADD COLUMN IF NOT EXISTS drx_todo_attempts INTEGER NOT NULL DEFAULT 0;
   `);
 
   // audit_log's index, guarded. In production the table is owned by a

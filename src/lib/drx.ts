@@ -30,7 +30,7 @@
  *  - v2 (/external_api/v2) is beta and lacks refill-request, patient-match and
  *    webhooks; build on v1.
  * Keys are immutable: the pharmacy issues one with only the permissions we use
- * (heartbeat, refillrequest, prescription, patientprofile) and locks it to the
+ * (heartbeat, refillrequest, prescription, patientprofile, todo) and locks it to the
  * server IP. Never grant `settings`, `partnerverify`, `claim` or `pointofsale`.
  *
  * TURNING IT ON:
@@ -304,4 +304,48 @@ export async function drxPatientProfile(
     };
   });
   return { dateOfBirth, medications };
+}
+
+/**
+ * POST /todo — a to-do in DRX's own task list, which is where pharmacy staff
+ * work. Used for everything from the website that needs a person
+ * (src/lib/drx-todos.ts). `note` may carry PHI: DRX is under the BAA.
+ */
+export async function drxCreateTodo(input: {
+  action: string;
+  note: string;
+  /** Pharmacy-local wall-clock time, "YYYY-MM-DDTHH:MM:SS". */
+  dueAt: string;
+  drxPatientId?: number;
+  tags?: string[];
+}): Promise<number> {
+  const res = await drxFetch<{ success?: boolean; todo_id?: number }>("/todo", {
+    method: "POST",
+    body: {
+      todo: {
+        action: input.action.slice(0, 200),
+        due_at: input.dueAt,
+        note: input.note,
+        ...(input.drxPatientId !== undefined ? { patient_id: input.drxPatientId } : {}),
+        ...(input.tags?.length ? { tags: input.tags } : {}),
+      },
+    },
+  });
+  if (typeof res?.todo_id !== "number") throw new DrxError(200, "todo not created");
+  return res.todo_id;
+}
+
+/** GET /todo/{id} — whether staff have ticked it done in DRX. null if it was deleted. */
+export async function drxTodoDone(todoId: number): Promise<{ done: boolean } | null> {
+  try {
+    const res = await drxFetch<{ todo?: { completed_on?: string | null } }>(
+      `/todo/${encodeURIComponent(String(todoId))}`,
+      { method: "GET" }
+    );
+    if (!res?.todo) return null;
+    return { done: Boolean(res.todo.completed_on) };
+  } catch (err) {
+    if (err instanceof DrxError && err.status === 404) return null;
+    throw err;
+  }
 }

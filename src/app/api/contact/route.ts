@@ -1,8 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
 import { encryptPHI } from "@/lib/crypto";
 import { sendContactEmail } from "@/lib/mail";
+import { isDrxEnabled } from "@/lib/drx";
+import { syncDrxTodosSoon } from "@/lib/drx-todos";
 import { getClientIp } from "@/lib/request";
 import { createRateLimiter } from "@/lib/rate-limit";
 
@@ -98,13 +100,18 @@ export async function POST(request: Request) {
       encryptPHI(data.message)
     );
 
-  // The submission is already durably stored above, so a transport hiccup
-  // must not fail the request — the admin panel is the reliable path either
-  // way, email is a convenience notification on top of it.
-  try {
-    await sendContactEmail(data);
-  } catch (err) {
-    console.error("contact form: email forward failed", err instanceof Error ? err.message : err);
+  // Staff work in DRX: with DRX on, the message becomes a DRX To-Do (in the
+  // background; the sync retries if DRX is down). Otherwise the content-free
+  // email points at the admin panel. Either way the submission is already
+  // stored, so delivery trouble must not fail the request.
+  if (isDrxEnabled()) {
+    after(() => syncDrxTodosSoon());
+  } else {
+    try {
+      await sendContactEmail(data);
+    } catch (err) {
+      console.error("contact form: email forward failed", err instanceof Error ? err.message : err);
+    }
   }
 
   return NextResponse.json({ ok: true });

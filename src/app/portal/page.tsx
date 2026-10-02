@@ -7,6 +7,8 @@ import { getSessionAccountId, getPatientProfile } from "@/lib/auth";
 import { listPatientRequests, type RxStatus } from "@/lib/rx-requests";
 import { drxConfig, isDrxEnabled } from "@/lib/drx";
 import { getDrxPatientId, takeDrxReadyNotice } from "@/lib/drx-link";
+import { syncDrxTodosSoon } from "@/lib/drx-todos";
+import { after } from "next/server";
 import DrxLinkForm from "@/components/portal/DrxLinkForm";
 
 export const metadata: Metadata = {
@@ -64,6 +66,9 @@ export default async function PortalPage({
     const linked = drxOn ? (await getDrxPatientId(profile.patientId)) !== null : false;
     const justConnected = drxOn && linked ? await takeDrxReadyNotice(profile.patientId) : false;
     const hasTransfer = requests.some((r) => r.kind === "transfer");
+    // Picks up To-Dos staff ticked done in DRX (shown on the next visit) and
+    // retries anything DRX missed. At most once every 2 minutes per server.
+    if (drxOn) after(() => syncDrxTodosSoon(2 * 60 * 1000));
     // The pharmacy's DRX refill site, when configured: an ordinary outbound
     // link, so nothing from this site is sent to DRX.
     const drxStore = drxConfig.storeUrl?.startsWith("https://") ? drxConfig.storeUrl : null;

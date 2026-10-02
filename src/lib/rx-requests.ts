@@ -176,7 +176,7 @@ export interface AdminRxRequest {
   /** null when the stored value could not be decrypted. */
   details: RefillDetails | TransferDetails | null;
   /** Outcome of forwarding to DRX; status null when it was never tried. */
-  drx: { status: DrxRefillStatus | null; at: string | null; outcomes: DrxRefillOutcome[] };
+  drx: { status: DrxRefillStatus | null; at: string | null; outcomes: DrxRefillOutcome[]; todoId: number | null };
   patient: {
     id: number;
     name: string;
@@ -207,7 +207,7 @@ export async function listRxRequestsForAdmin(filter: RxQueueFilter): Promise<Adm
   const rows = await db
     .prepare(
       `SELECT r.id, r.kind, r.status, r.details, r.staff_note, r.handled_by, r.created_at, r.updated_at,
-              r.drx_status, r.drx_result, r.drx_at,
+              r.drx_status, r.drx_result, r.drx_at, r.drx_todo_id,
               p.patient_id, p.first_name, p.last_name, p.date_of_birth, p.cell_phone, p.email, p.delivery_method,
               p.drx_patient_id
        FROM rx_requests r JOIN patients p ON p.patient_id = r.patient_id
@@ -222,6 +222,7 @@ export async function listRxRequestsForAdmin(filter: RxQueueFilter): Promise<Adm
       drx_status: DrxRefillStatus | null;
       drx_result: string | null;
       drx_at: string | null;
+      drx_todo_id: number | null;
       staff_note: string | null;
       handled_by: string | null;
       created_at: string;
@@ -245,7 +246,7 @@ export async function listRxRequestsForAdmin(filter: RxQueueFilter): Promise<Adm
     handledBy: r.handled_by,
     staffNote: r.staff_note ? safeDecrypt(r.staff_note) : "",
     details: parseDetails(r.kind, r.details),
-    drx: { status: r.drx_status, at: r.drx_at, outcomes: readDrxResult(r.drx_result) },
+    drx: { status: r.drx_status, at: r.drx_at, outcomes: readDrxResult(r.drx_result), todoId: r.drx_todo_id },
     patient: {
       id: r.patient_id,
       name: `${safeDecrypt(r.first_name)} ${safeDecrypt(r.last_name)}`,

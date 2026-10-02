@@ -4,6 +4,8 @@ import { getSessionAccountId } from "@/lib/auth";
 import { createRxRequest, getPatientIdForAccount, type RxRequestInput } from "@/lib/rx-requests";
 import { sendRxRequestEmail } from "@/lib/mail";
 import { forwardRefillToDrx } from "@/lib/drx-refills";
+import { syncDrxTodosSoon } from "@/lib/drx-todos";
+import { isDrxEnabled } from "@/lib/drx";
 import { getClientIp } from "@/lib/request";
 import { createRateLimiter } from "@/lib/rate-limit";
 
@@ -132,16 +134,23 @@ export async function POST(request: Request) {
   // After the response, so a slow or failing mail transport can neither delay
   // nor fail a request that is already safely stored. The queue in the admin
   // panel is the reliable path; the email is only a nudge.
-  after(() =>
-    sendRxRequestEmail(input.kind).catch((err) =>
-      console.error("rx request: staff notification failed", err instanceof Error ? err.message : err)
-    )
-  );
-  // Refills also go to DRX when that is switched on. Also after the response:
-  // the request is already stored, so DRX being slow or down only means staff
-  // handle it from the queue as before. forwardRefillToDrx never throws.
-  if (input.kind === "refill") {
-    after(() => forwardRefillToDrx(result.id).then(() => undefined));
+  if (isDrxEnabled()) {
+    // Staff work in DRX, so that is where this goes: refills straight into
+    // DRX's queue, and whatever needs a person (transfers, refills DRX did not
+    // accept) as a DRX To-Do. After the response: the request is already
+    // stored, so DRX being slow or down only delays it (the sync retries).
+    // Neither call throws.
+    after(async () => {
+      if (input.kind === "refill") await forwardRefillToDrx(result.id);
+      await syncDrxTodosSoon();
+    });
+  } else {
+    // DRX off: the content-free email points staff at the admin queue.
+    after(() =>
+      sendRxRequestEmail(input.kind).catch((err) =>
+        console.error("rx request: staff notification failed", err instanceof Error ? err.message : err)
+      )
+    );
   }
 
   return NextResponse.json({ ok: true, id: result.id });

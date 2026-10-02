@@ -220,6 +220,12 @@ export default async function AdminRequestsPage({
                   </div>
                 )}
 
+                {r.drx.todoId !== null && (
+                  <p className="mt-3 text-xs font-medium text-navy-700">
+                    In DRX as To-Do #{r.drx.todoId}: staff work it there; ticking it done there completes it here.
+                  </p>
+                )}
+
                 {r.handledBy && (
                   <p className="mt-3 text-xs text-slate-500">
                     Last updated by {r.handledBy} · {formatDate(r.updatedAt)}

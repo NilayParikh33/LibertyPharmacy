@@ -376,6 +376,22 @@ and date of birth are kept from that response. Three ways in:
   `/admin/requests`. The id is refused unless DRX's date of birth for it
   matches (`/profile`), so a typo can't expose another patient's medications.
 
+*DRX To-Dos: where staff see website work* (`src/lib/drx-todos.ts`). Staff
+work only in DRX, so anything that needs a person becomes a To-Do in DRX's own
+task list (`POST /todo`, tagged "Website", linked to the DRX patient when
+known): every transfer request, every refill DRX did not fully accept (with
+DRX's reason per Rx), and every contact-form message. The note carries what
+staff need (name, DOB, phone, pharmacy to transfer from, medications); DRX is
+under the BAA. When staff tick the To-Do done in DRX, the request shows
+"Completed" on the patient's portal (`GET /todo/{id}`). With DRX on, the
+"new request" staff emails are not sent; the To-Do is the notification.
+
+The sync runs in the background after each request or message and at most
+every 2 minutes on portal visits, one pass at a time. If DRX is down it
+retries (up to 20 times per item); refills DRX could not be reached for are
+re-sent within 24 hours. Switching DRX on moves the backlog of open requests
+into DRX as To-Dos. The admin panel stays as a developer's backup view.
+
 *New patients.* Someone who has never filled at Liberty has no DRX record,
 and the site does not create one (that needs DRX's broad `patient`
 permission). Until they are linked, the portal and refill page point them to

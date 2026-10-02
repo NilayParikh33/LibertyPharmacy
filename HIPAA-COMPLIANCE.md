@@ -129,10 +129,12 @@ migration later:
       and failures are indistinguishable. The `prescription` permission it uses
       also returns prescriber and fill data; `drxPrescriptionOwner` keeps only
       the patient id, name and date of birth.
+- [x] Website work handed to staff as DRX To-Dos carries PHI in the note; this
+      relies on the DRX BAA. Logs and audit entries carry ids and outcomes only.
 - [ ] Set `DRX_ENABLED=true` **only after the BAA is signed**. With
       just the URL and key set, the admin panel checks the key (`/heartbeat`,
       no PHI) and nothing else is sent.
-- [ ] The DRX key carries only `heartbeat`, `refillrequest`, `prescription`,
+- [ ] The DRX key carries only `heartbeat`, `refillrequest`, `prescription`, `todo`,
       `patientprofile`, and is IP-restricted to the production server.
 - [ ] Tighten CSP: replace `'unsafe-inline'` in `script-src` with nonces
       before handling PHI in the browser.
