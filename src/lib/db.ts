@@ -1,6 +1,7 @@
 import { Pool, type PoolClient, types } from "pg";
 import { AsyncLocalStorage } from "async_hooks";
 import { readFileSync } from "fs";
+import { isRdsDeployment } from "./deployment";
 
 // node-postgres returns BIGINT (e.g. COUNT(*)) as a string by default, to
 // avoid silent precision loss beyond Number.MAX_SAFE_INTEGER. Every count in
@@ -123,7 +124,17 @@ function resolveSsl(
 
   // DB_SSL_MODE selects how the server certificate is trusted. The default
   // (unset) is the strictest option and the only one used against RDS.
-  switch (process.env.DB_SSL_MODE ?? "verify-ca") {
+  let mode = process.env.DB_SSL_MODE ?? "verify-ca";
+  // RDS is the production patient-data database: it is always verified
+  // against Amazon's CA, as at launch. The relaxed modes exist for demo
+  // databases only, so a relaxed setting here is overridden, not honoured.
+  if (isRdsDeployment() && mode !== "verify-ca") {
+    console.error(
+      `[db] DB_SSL_MODE="${mode}" is IGNORED for Amazon RDS; using verify-ca (RDS_CA_BUNDLE_PATH). Remove the variable.`
+    );
+    mode = "verify-ca";
+  }
+  switch (mode) {
     // Pin to a specific CA bundle. Required for RDS: its server certs chain
     // to Amazon's own CA, which is absent from Node's default trust store, so
     // verifying against the system store alone would reject a valid RDS cert
