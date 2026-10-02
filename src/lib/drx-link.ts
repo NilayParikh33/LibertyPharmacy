@@ -88,7 +88,7 @@ export async function linkDrxPatient(patientId: number, rxNumber: string, actor:
   const firstName = safeDecrypt(row.first_name);
   const lastName = safeDecrypt(row.last_name);
   const dateOfBirth = safeDecrypt(row.date_of_birth);
-  if (!firstName || !lastName || !dateOfBirth || !/^\d{1,10}$/.test(rxNumber.trim())) {
+  if (!firstName || !lastName || !dateOfBirth || !/^\d{1,10}$/.test(rxNumber.trim()) || Number(rxNumber) <= 0) {
     await auditLink(actor, patientId, "no_match");
     return "no_match";
   }

@@ -18,7 +18,11 @@ import { createRateLimiter } from "@/lib/rate-limit";
  */
 
 const schema = z.object({
-  rxNumber: z.string().trim().regex(/^\d{1,10}$/, "Enter the Rx number exactly as printed on your label (digits only)"),
+  rxNumber: z
+    .string()
+    .trim()
+    .regex(/^\d{1,10}$/, "Enter the Rx number exactly as printed on your label (digits only)")
+    .refine((v) => Number(v) > 0, "Enter the Rx number exactly as printed on your label (digits only)"),
 });
 
 const ipLimiter = createRateLimiter({ limit: 20, windowMs: 60 * 60 * 1000 });

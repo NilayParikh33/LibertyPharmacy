@@ -59,6 +59,15 @@ export const drxConfig = {
   patientDataEnabled: process.env.DRX_ENABLED === "true",
 };
 
+/**
+ * DRX treats an id of 0 as "no id" and answers with a LIST (GET /prescription/0
+ * returns other patients' prescriptions, GET /todo/0 the store's To-Dos), so
+ * every id put into a URL must be a positive integer.
+ */
+function isDrxId(n: number): boolean {
+  return Number.isSafeInteger(n) && n > 0;
+}
+
 /** True once the DRX storefront URL is configured. */
 export function isDrxConfigured(): boolean {
   return Boolean(drxConfig.storeUrl);
@@ -155,6 +164,7 @@ export async function drxPrescriptionOwner(rxNumber: number): Promise<{
   lastName: string;
   dateOfBirth: string | null;
 } | null> {
+  if (!isDrxId(rxNumber)) return null;
   let res: { prescription?: { id?: number; patient?: { id?: number; first_name?: string; last_name?: string; date_of_birth?: string | null } } };
   try {
     res = await drxFetch(`/prescription/${encodeURIComponent(String(rxNumber))}`, { method: "GET" });
@@ -270,6 +280,7 @@ const PROFILE_MAX = 500;
 export async function drxPatientProfile(
   drxPatientId: number
 ): Promise<{ dateOfBirth: string | null; medications: DrxMedication[] }> {
+  if (!isDrxId(drxPatientId)) return { dateOfBirth: null, medications: [] };
   const all: DrxProfilePrescription[] = [];
   for (let offset = 0; offset < PROFILE_MAX; offset += PROFILE_PAGE) {
     const res = await drxFetch<{ prescriptions?: DrxProfilePrescription[]; total?: number }>(
@@ -337,6 +348,7 @@ export async function drxCreateTodo(input: {
 
 /** GET /todo/{id} — whether staff have ticked it done in DRX. null if it was deleted. */
 export async function drxTodoDone(todoId: number): Promise<{ done: boolean } | null> {
+  if (!isDrxId(todoId)) return null;
   try {
     const res = await drxFetch<{ todo?: { completed_on?: string | null } }>(
       `/todo/${encodeURIComponent(String(todoId))}`,

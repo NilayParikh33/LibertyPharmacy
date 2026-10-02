@@ -41,7 +41,8 @@ const DELIVERY: Record<RefillDetails["deliveryMethod"], DrxDeliveryMethod> = {
 
 /** DRX Rx numbers are integers; anything else on our form is left for staff. */
 function asDrxRxNumber(rx: string): number | null {
-  return /^\d{1,10}$/.test(rx) ? Number(rx) : null;
+  const n = /^\d{1,10}$/.test(rx) ? Number(rx) : 0;
+  return n > 0 ? n : null;
 }
 
 function safeDecrypt(stored: string | null): string | null {
