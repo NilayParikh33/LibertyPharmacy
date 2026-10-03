@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { z } from "zod";
 import { requestPasswordReset } from "@/lib/auth";
-import { getClientIp } from "@/lib/request";
+import { getClientIp, getAppBaseUrl } from "@/lib/request";
+import { createRateLimiter } from "@/lib/rate-limit";
 
 /**
  * Request a password reset link.
@@ -12,27 +13,7 @@ import { getClientIp } from "@/lib/request";
  */
 
 // Max 5 reset requests per 15 min per IP — limits mail-bombing a known address.
-const attempts = new Map<string, { count: number; resetAt: number }>();
-function rateLimited(ip: string): boolean {
-  const now = Date.now();
-  for (const [key, slot] of attempts) {
-    if (slot.resetAt < now) attempts.delete(key);
-  }
-  const slot = attempts.get(ip);
-  if (!slot || slot.resetAt < now) {
-    attempts.set(ip, { count: 1, resetAt: now + 15 * 60 * 1000 });
-    return false;
-  }
-  slot.count += 1;
-  return slot.count > 5;
-}
-
-/** Base URL for the emailed link: configured origin, else this request's own. */
-function baseUrl(request: Request): string {
-  const configured = process.env.APP_BASE_URL?.replace(/\/$/, "");
-  if (configured) return configured;
-  return new URL(request.url).origin;
-}
+const limiter = createRateLimiter({ limit: 5, windowMs: 15 * 60 * 1000 });
 
 export async function POST(request: Request) {
   const ip = getClientIp(request);
@@ -41,7 +22,7 @@ export async function POST(request: Request) {
     message: "If an account exists for that email, we've sent a reset link.",
   });
 
-  if (rateLimited(ip)) {
+  if (limiter.hit(ip)) {
     return NextResponse.json(
       { error: "Too many reset requests. Please try again later." },
       { status: 429 }
@@ -59,11 +40,12 @@ export async function POST(request: Request) {
   // Even a malformed email gets the generic response — no signal either way.
   if (!parsed.success) return generic;
 
-  try {
-    await requestPasswordReset(parsed.data.email, baseUrl(request), ip);
-  } catch {
-    // Mail transport failures must not reveal whether the account existed.
-    return generic;
-  }
+  // Done after the response is sent. Only a registered email does real work
+  // here (token insert + sending mail), so doing it inline made registered
+  // addresses measurably slower to answer — a timing oracle for the patient
+  // roster (SEC-002). Failures are swallowed for the same reason.
+  const base = getAppBaseUrl(request);
+  const email = parsed.data.email;
+  after(() => requestPasswordReset(email, base, ip).catch(() => {}));
   return generic;
 }

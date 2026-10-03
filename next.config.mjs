@@ -12,39 +12,14 @@
  */
 
 /**
- * Content-Security-Policy:
- *  - default-src 'self'      : only load resources from our own origin
- *  - script-src              : Next.js requires 'unsafe-inline' for its runtime
- *                              bootstrap; tighten with nonces before handling PHI.
- *  - frame-ancestors 'none'  : never allow the site to be iframed (clickjacking)
- *  - form-action 'self'      : forms may only post to our own origin
- *  - connect-src 'self'      : fetch/XHR restricted to our own origin.
- *                              When DRX integration lands, add the DRX API origin
- *                              here (e.g. https://liberty.drxrefill.com).
+ * Content-Security-Policy is NOT set here. It is set per request in
+ * src/middleware.ts, because it carries a fresh script nonce for every page
+ * response (a static header cannot). See SECURITY-AUDIT.md, SEC-014.
  */
-// Next.js DEV MODE only: react-refresh (hot reload) uses eval(), and blocking
-// it prevents React from hydrating at all (no client-side interactivity).
-// 'unsafe-eval' is never sent in production builds.
-const isDev = process.env.NODE_ENV === "development";
-
-const csp = [
-  "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
-  "font-src 'self'",
-  "connect-src 'self'",
-  "frame-ancestors 'none'",
-  "form-action 'self'",
-  "base-uri 'self'",
-  "object-src 'none'",
-  "upgrade-insecure-requests",
-].join("; ");
 
 const securityHeaders = [
   // Force HTTPS for 2 years, including subdomains. Submit to preload list once stable.
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
-  { key: "Content-Security-Policy", value: csp },
   // Never let browsers MIME-sniff responses.
   { key: "X-Content-Type-Options", value: "nosniff" },
   // Redundant with frame-ancestors but kept for older browsers.
@@ -62,9 +37,19 @@ const securityHeaders = [
 const nextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
+  // Hide the floating dev-tools indicator (the circular badge that reports a
+  // route as Static/Dynamic). It only ever renders in `next dev` — never in a
+  // production build — but it sits over the bottom-left corner of the UI.
+  devIndicators: false,
   // Traces only the node_modules each route actually needs into .next/standalone,
   // instead of the whole node_modules tree — keeps the ECS/Docker image small.
   output: "standalone",
+  // The site never uses Next's image optimizer (product images are plain
+  // <img>, the one next/image is already `unoptimized`), but its endpoint,
+  // /_next/image, is live by default — and it is where the critical
+  // AVIF remote-code-execution advisory lives (GHSA-2xp9-vwfh-vxw4).
+  // Turning it off removes that attack surface outright (SEC-010).
+  images: { unoptimized: true },
   async headers() {
     return [
       {

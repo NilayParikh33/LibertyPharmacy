@@ -1,6 +1,7 @@
 import { Pool, type PoolClient, types } from "pg";
 import { AsyncLocalStorage } from "async_hooks";
 import { readFileSync } from "fs";
+import { isRdsDeployment } from "./deployment";
 
 // node-postgres returns BIGINT (e.g. COUNT(*)) as a string by default, to
 // avoid silent precision loss beyond Number.MAX_SAFE_INTEGER. Every count in
@@ -123,7 +124,17 @@ function resolveSsl(
 
   // DB_SSL_MODE selects how the server certificate is trusted. The default
   // (unset) is the strictest option and the only one used against RDS.
-  switch (process.env.DB_SSL_MODE ?? "verify-ca") {
+  let mode = process.env.DB_SSL_MODE ?? "verify-ca";
+  // RDS is the production patient-data database: it is always verified
+  // against Amazon's CA, as at launch. The relaxed modes exist for demo
+  // databases only, so a relaxed setting here is overridden, not honoured.
+  if (isRdsDeployment() && mode !== "verify-ca") {
+    console.error(
+      `[db] DB_SSL_MODE="${mode}" is IGNORED for Amazon RDS; using verify-ca (RDS_CA_BUNDLE_PATH). Remove the variable.`
+    );
+    mode = "verify-ca";
+  }
+  switch (mode) {
     // Pin to a specific CA bundle. Required for RDS: its server certs chain
     // to Amazon's own CA, which is absent from Node's default trust store, so
     // verifying against the system store alone would reject a valid RDS cert
@@ -343,6 +354,26 @@ async function init(): Promise<AppDb> {
     );
     CREATE INDEX IF NOT EXISTS idx_contact_messages_created ON contact_messages(created_at);
 
+    -- Refill and prescription-transfer requests from signed-in patients, worked
+    -- by pharmacy staff in the admin panel (src/lib/rx-requests.ts). Which
+    -- prescriptions someone takes, and which pharmacy they come from, is health
+    -- information, so everything the patient typed lives in the one encrypted
+    -- JSON column; only operational columns (ids, kind, status, timestamps)
+    -- stay plaintext. Deleting a patient deletes their requests with them.
+    CREATE TABLE IF NOT EXISTS rx_requests (
+      id          SERIAL PRIMARY KEY,
+      patient_id  INTEGER NOT NULL REFERENCES patients(patient_id) ON DELETE CASCADE,
+      kind        TEXT NOT NULL CHECK (kind IN ('refill','transfer')),
+      details     TEXT NOT NULL,                 -- [enc] JSON of what the patient submitted
+      status      TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','in_progress','completed','cancelled')),
+      staff_note  TEXT,                          -- [enc] internal note, never shown to the patient
+      handled_by  TEXT,                          -- admin username of the last status change
+      created_at  TEXT NOT NULL DEFAULT (${NOW_ISO}),
+      updated_at  TEXT NOT NULL DEFAULT (${NOW_ISO})
+    );
+    CREATE INDEX IF NOT EXISTS idx_rx_requests_patient ON rx_requests(patient_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_rx_requests_status ON rx_requests(status, created_at);
+
     -- Blog content, admin-managed. sections_json holds Post["sections"].
     CREATE TABLE IF NOT EXISTS posts (
       id            SERIAL PRIMARY KEY,
@@ -375,6 +406,30 @@ async function init(): Promise<AppDb> {
       maps_url       TEXT NOT NULL,
       updated_at     TEXT NOT NULL DEFAULT (${NOW_ISO})
     );
+  `);
+
+  // Columns added after the first launch. CREATE TABLE IF NOT EXISTS leaves an
+  // existing table alone, so these have to be added explicitly.
+  await db.exec(`
+    -- DRX's own patient id, found from an Rx number (src/lib/drx-link.ts). Not PHI on its own (an
+    -- opaque number), and lets later refills skip the match call.
+    ALTER TABLE patients ADD COLUMN IF NOT EXISTS drx_patient_id INTEGER;
+    -- When the link was made, and whether the portal still owes the patient a
+    -- one-time "you can refill online now" notice.
+    ALTER TABLE patients ADD COLUMN IF NOT EXISTS drx_linked_at TEXT;
+    ALTER TABLE patients ADD COLUMN IF NOT EXISTS drx_ready_notice INTEGER NOT NULL DEFAULT 0;
+    -- Outcome of forwarding a refill to DRX (src/lib/drx-refills.ts). NULL
+    -- means it was never tried (transfers, or DRX switched off).
+    ALTER TABLE rx_requests ADD COLUMN IF NOT EXISTS drx_status TEXT
+      CHECK (drx_status IN ('sent','partial','rejected','error','no_match'));
+    ALTER TABLE rx_requests ADD COLUMN IF NOT EXISTS drx_result TEXT; -- [enc] JSON DrxRefillOutcome[]
+    ALTER TABLE rx_requests ADD COLUMN IF NOT EXISTS drx_at TEXT;
+    -- The DRX To-Do that hands this request to staff inside DRX
+    -- (src/lib/drx-todos.ts), and how many times creating it has failed.
+    ALTER TABLE rx_requests ADD COLUMN IF NOT EXISTS drx_todo_id INTEGER;
+    ALTER TABLE rx_requests ADD COLUMN IF NOT EXISTS drx_todo_attempts INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE contact_messages ADD COLUMN IF NOT EXISTS drx_todo_id INTEGER;
+    ALTER TABLE contact_messages ADD COLUMN IF NOT EXISTS drx_todo_attempts INTEGER NOT NULL DEFAULT 0;
   `);
 
   // audit_log's index, guarded. In production the table is owned by a
@@ -463,9 +518,23 @@ declare global {
   var __libertyDbPromise: Promise<AppDb> | undefined;
 }
 
-/** Reuse one pool across Next.js hot reloads. */
+/**
+ * Reuse one pool across Next.js hot reloads.
+ *
+ * Only a *successful* init is cached. If the database is unreachable when the
+ * first request arrives (a restart, a managed-Postgres blip during deploy),
+ * caching the rejected promise would make every later request fail too — the
+ * site would return 500s until the Node process restarted, even after the
+ * database came back. Clearing it lets the next request retry. A failed init
+ * leaves nothing to clean up: the pool opens no sockets until first use.
+ */
 export function getDb(): Promise<AppDb> {
-  if (!globalThis.__libertyDbPromise) globalThis.__libertyDbPromise = init();
+  if (!globalThis.__libertyDbPromise) {
+    globalThis.__libertyDbPromise = init().catch((err) => {
+      globalThis.__libertyDbPromise = undefined;
+      throw err;
+    });
+  }
   return globalThis.__libertyDbPromise;
 }
 

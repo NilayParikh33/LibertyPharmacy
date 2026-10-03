@@ -4,6 +4,7 @@ import { getCurrentAdmin } from "@/lib/admin-auth";
 import { getDb } from "@/lib/db";
 import { audit } from "@/lib/db";
 import { getClientIp } from "@/lib/request";
+import { parseId } from "@/lib/ids";
 
 const statusSchema = z.object({ status: z.enum(["new", "read", "replied"]) });
 
@@ -13,7 +14,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  const { id } = await params;
+  const id = parseId((await params).id);
+  if (id === null) {
+    return NextResponse.json({ error: "Not found." }, { status: 404 });
+  }
   let body: unknown;
   try {
     body = await request.json();
@@ -27,7 +31,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   const db = await getDb();
-  await db.prepare("UPDATE contact_messages SET status = ? WHERE id = ?").run(parsed.data.status, id);
+  const { changes } = await db.prepare("UPDATE contact_messages SET status = ? WHERE id = ?").run(parsed.data.status, id);
+  if (changes === 0) {
+    return NextResponse.json({ error: "Not found." }, { status: 404 });
+  }
   await audit({
     actor: `admin:${admin.username}`,
     action: "admin.message.status",

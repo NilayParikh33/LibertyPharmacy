@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { stagger } from "@/lib/motion";
+import Reveal from "@/components/Reveal";
 import Link from "next/link";
 import PageHero from "@/components/PageHero";
 
@@ -27,6 +29,7 @@ export default function AboutPage() {
   return (
     <>
       <PageHero
+        eyebrow="About"
         title="About Liberty Pharmacy"
         subtitle="An independent pharmacy built around people, not prescriptions-per-hour."
       />
@@ -67,13 +70,13 @@ export default function AboutPage() {
 
       <section className="bg-slate-50 py-16">
         <div className="container-site">
-          <h2 className="section-title text-center">What We Stand For</h2>
+          <Reveal as="h2" className="section-title text-center">What We Stand For</Reveal>
           <div className="mt-10 grid gap-6 sm:grid-cols-3">
-            {values.map((v) => (
-              <div key={v.title} className="card">
-                <h3 className="text-base font-semibold text-navy-900">{v.title}</h3>
+            {values.map((v, i) => (
+              <Reveal as="div" key={v.title} delay={stagger(i)} className="card lp-lift">
+                <h3 className="text-base font-semibold text-navy-950">{v.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-slate-600">{v.body}</p>
-              </div>
+              </Reveal>
             ))}
           </div>
           <div className="mt-12 text-center">

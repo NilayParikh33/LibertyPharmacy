@@ -337,6 +337,100 @@ happened. This is what HIPAA calls "audit controls," and it's what lets the
 pharmacy answer "who looked at this patient's record, and when?" after the
 fact.
 
+### 6.6a Refill and transfer requests
+
+Signed-in patients use `/portal/refill` and `/portal/transfer`. Each request
+is one encrypted JSON blob in the `rx_requests` table
+(`src/lib/rx-requests.ts`); who is asking always comes from the session, never
+the form. Staff see a queue at `/admin/requests` (oldest first), process each
+request in their dispensing system, and mark it in progress / completed /
+cancelled; the patient sees that status on `/portal`. The "new request" email
+says only that something is waiting — no names, drugs or numbers — because the
+mail transport is not yet under a BAA. Limits: 10 requests per account per
+hour, 20 open at once.
+
+**DRX.** With `DRX_API_BASE_URL` and `DRX_API_KEY` set, `/admin/requests`
+shows whether the key works (`GET /heartbeat`, no PHI). Nothing else touches
+DRX until `DRX_ENABLED=true` (set only after the DRX BAA).
+
+*Linking an account to its DRX patient* (`src/lib/drx-link.ts`,
+`patients.drx_patient_id`). There is no shared id and no DRX patient login.
+The patient gives one Rx number from a label; `GET /prescription/{rx}` tells
+us which DRX patient it belongs to. The link is made only if:
+- the **date of birth** on their verified account equals DRX's exactly (the
+  real check; registration tells existing patients to enter it exactly as the
+  pharmacy has it), and
+- the names share **at least one word**, in any order or case ("Kush
+  Chaudhary" matches "CHAUDHARY, VIJAY KUSH"). This light check stays because
+  Rx numbers are sequential: with date of birth alone, someone could register
+  with a common birth date and try numbers.
+
+`/patient-match` is not used: it needs an exact name. The key therefore needs
+the `prescription` permission (not `patientmatch`); only the patient id, name
+and date of birth are kept from that response. Three ways in:
+- the patient enters one Rx number on `/portal/medications` (5 tries per
+  account per hour, 20 per address; every failure gets the same message so
+  it can't confirm whether an Rx exists);
+- automatically from the Rx numbers on their first refill request;
+- staff, after checking the patient by phone, use "Link by hand" on
+  `/admin/requests`. The id is refused unless DRX's date of birth for it
+  matches (`/profile`), so a typo can't expose another patient's medications.
+
+*DRX To-Dos: where staff see website work* (`src/lib/drx-todos.ts`). Staff
+work only in DRX, so anything that needs a person becomes a To-Do in DRX's own
+task list (`POST /todo`, tagged "Website", linked to the DRX patient when
+known): every transfer request, every refill DRX did not fully accept (with
+DRX's reason per Rx), and every contact-form message. The note carries what
+staff need (name, DOB, phone, pharmacy to transfer from, medications); DRX is
+under the BAA. When staff tick the To-Do done in DRX, the request shows
+"Completed" on the patient's portal (`GET /todo/{id}`). With DRX on, the
+"new request" staff emails are not sent; the To-Do is the notification.
+
+The sync runs in the background after each request or message and at most
+every 2 minutes on portal visits, one pass at a time. If DRX is down it
+retries (up to 20 times per item); refills DRX could not be reached for are
+re-sent within 24 hours. Switching DRX on moves the backlog of open requests
+into DRX as To-Dos. The admin panel stays as a developer's backup view.
+
+*New patients.* Someone who has never filled at Liberty has no DRX record,
+and the site does not create one (that needs DRX's broad `patient`
+permission). Until they are linked, the portal and refill page point them to
+**Transfer a prescription** instead. Staff only work in DRX: they add the
+patient and fill the transfer as usual, with nothing to do on this site. The
+transfer confirmation tells the patient to keep their label, and once they
+have a transfer on file the portal home asks for the Rx number from their
+first Liberty label, which links them (same checks as above). "Link by hand"
+in the admin queue is only for a patient who calls for help. When staff or
+the system make the link,
+the patient gets a content-free email and a one-time portal banner saying they
+can now refill online (`sendRecordConnectedEmail`, `patients.drx_ready_notice`);
+a patient who linked themselves gets neither.
+
+*Medication list* (`/portal/medications`). Linked patients see their
+prescriptions read live from `GET /profile/{id}` on each visit; nothing is
+stored. Every prescription is checked to belong to that DRX patient, and only
+drug, directions, prescriber, dates, quantity left and last-fill status are
+shown (no copay, insurance or NDC). Prescriptions that can be refilled get a
+tick-box; expired, used-up and inactive ones say why. Ticked items are sent as
+an ordinary refill request (below). Each view is audited by id and count.
+
+*Refill forwarding* (`src/lib/drx-refills.ts`), after the patient already has
+their answer:
+
+1. The account is linked as above, if it isn't already.
+2. `POST /refill-request` is sent with that id and our stored date of birth;
+   DRX rejects any Rx that isn't that patient's. Rx numbers that aren't
+   numeric are left for staff.
+3. The per-Rx outcome is stored encrypted on the request (`drx_status`,
+   `drx_result`). If DRX accepted everything the request moves to "in
+   progress" (handled by `DRX`); otherwise it stays "new" for staff, who see
+   DRX's reasons and can press "Send to DRX again" (already-accepted Rx are
+   never resent). The patient sees DRX's pickup time, labelled as an estimate.
+
+Transfers have no DRX endpoint and always stay with staff. Audit entries
+(`drx.refill.forward`, `admin.rx_request.drx_resend`) carry ids and counts
+only. The separate DRX Connect key is clinic scheduling only.
+
 ### 6.7 Logging out
 
 `LogoutButton.tsx` calls `POST /api/auth/logout`, which deletes the session
@@ -356,6 +450,8 @@ kept a copy of the cookie) and clears the cookie in the browser.
 | `/api/auth/logout` | POST | End the session | No (no-op if already signed out) |
 | `/api/auth/me` | GET | Return the signed-in patient's basic profile | Yes (401 if not signed in) |
 | `/api/contact` | POST | Validate + PHI-screen a general inquiry (stores nothing) | No |
+| `/api/portal/requests` | POST | File a refill or prescription-transfer request (stored encrypted, staff emailed a content-free notice) | Yes (patient session) |
+| `/api/admin/requests/[id]` | PATCH | Staff set a request's status and/or internal note | Yes (admin session) |
 
 All routes validate their input with `zod` and return
 `{ error: "..." }` with a non-200 status on failure, or `{ ok: true, ... }`
@@ -479,8 +575,9 @@ upcoming — are now built. What's still ahead per `HIPAA-COMPLIANCE.md` and
 §15 below: moving OTP email delivery off consumer Gmail onto a BAA-covered
 provider (AWS SES), moving `PHI_ENCRYPTION_KEY` into a managed secret store,
 optional additional MFA methods (e.g. SMS/authenticator app) if DRX
-supports them, and the real DRX platform integration (refills, transfers,
-medication history) once a signed BAA is in place with DRX. `src/lib/drx.ts`
+supports them, and a real DRX pharmacy-platform integration (automatic refills/transfers,
+medication history) once DRX confirms a pharmacy API and a BAA is signed
+(refills and transfers are already handled in-house, §6.6a). `src/lib/drx.ts`
 is the seam where that integration will plug in — the portal already stores
 patient data in the exact shape DRX expects (see the field-mapping table in
 `HIPAA-COMPLIANCE.md`), so that migration should be a straightforward 1:1

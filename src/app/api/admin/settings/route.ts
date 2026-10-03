@@ -5,11 +5,32 @@ import { updateSiteSettings } from "@/lib/site";
 import { audit } from "@/lib/db";
 import { getClientIp } from "@/lib/request";
 
+// These two are rendered as href on every page. z.string().url() alone
+// accepts javascript:, data: and any off-site URL, so an admin typo — or a
+// compromised admin session — could turn every "Call us" / "Directions" link
+// on the site into a phishing link (SEC-006). Constrain both to what they are.
+const MAPS_HOSTS = new Set([
+  "google.com", "www.google.com", "maps.google.com", "goo.gl", "maps.app.goo.gl",
+  "maps.apple.com", "bing.com", "www.bing.com",
+]);
+const mapsUrl = z
+  .string()
+  .trim()
+  .url("Enter a valid maps URL")
+  .refine((v) => {
+    const u = new URL(v);
+    return u.protocol === "https:" && MAPS_HOSTS.has(u.hostname) && !u.username && !u.password;
+  }, "Maps link must be an https:// Google, Apple, or Bing Maps URL");
+const phoneHref = z
+  .string()
+  .trim()
+  .regex(/^tel:\+?[0-9]{7,15}$/, "Phone link must look like tel:+15125550100");
+
 const settingsSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(200),
   tagline: z.string().trim().min(1, "Tagline is required").max(300),
   phone: z.string().trim().min(1, "Phone is required").max(30),
-  phoneHref: z.string().trim().min(1, "Phone link is required").max(40),
+  phoneHref,
   fax: z.string().trim().min(1, "Fax is required").max(30),
   email: z.string().trim().email("A valid email is required").max(254),
   address: z.object({
@@ -27,7 +48,7 @@ const settingsSchema = z.object({
       })
     )
     .min(1),
-  mapsUrl: z.string().trim().url("Enter a valid maps URL"),
+  mapsUrl,
 });
 
 export async function PUT(request: Request) {

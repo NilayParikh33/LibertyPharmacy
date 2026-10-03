@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { Phone, Printer } from "lucide-react";
 import Logo from "./Logo";
+import AccreditationStrip from "./AccreditationStrip";
 import type { SiteSettings } from "@/lib/site";
 
 const gettingStarted = [
@@ -11,6 +13,7 @@ const gettingStarted = [
 
 const explore = [
   { label: "Services", href: "/services" },
+  { label: "Products", href: "/products" },
   { label: "For Providers", href: "/providers" },
   { label: "Blog", href: "/blog" },
   { label: "Patient Portal", href: "/portal" },
@@ -23,12 +26,12 @@ const legal = [
 
 export default function Footer({ settings: site }: { settings: SiteSettings }) {
   return (
-    <footer className="border-t border-slate-200 bg-navy-950 text-slate-300">
-      <div className="container-site grid gap-10 py-14 sm:grid-cols-2 lg:grid-cols-4">
+    <footer className="bg-navy-950 text-slate-300">
+      <div className="container-site grid gap-10 py-16 sm:grid-cols-2 lg:grid-cols-4">
         <div>
-          <div className="flex items-center gap-2.5">
-            <Logo className="h-8 w-8" />
-            <span className="text-base font-bold text-white">
+          <div className="flex items-center gap-3">
+            <Logo className="h-11 w-11" />
+            <span className="text-lg font-bold text-white">
               Liberty <span className="text-liberty-gold">Pharmacy</span>
             </span>
           </div>
@@ -45,7 +48,7 @@ export default function Footer({ settings: site }: { settings: SiteSettings }) {
           <ul className="mt-4 space-y-2.5">
             {gettingStarted.map((l) => (
               <li key={l.href}>
-                <Link href={l.href} className="text-sm hover:text-white">
+                <Link href={l.href} className="text-sm transition-colors duration-200 hover:text-white">
                   {l.label}
                 </Link>
               </li>
@@ -58,7 +61,7 @@ export default function Footer({ settings: site }: { settings: SiteSettings }) {
           <ul className="mt-4 space-y-2.5">
             {explore.map((l) => (
               <li key={l.href}>
-                <Link href={l.href} className="text-sm hover:text-white">
+                <Link href={l.href} className="text-sm transition-colors duration-200 hover:text-white">
                   {l.label}
                 </Link>
               </li>
@@ -68,7 +71,7 @@ export default function Footer({ settings: site }: { settings: SiteSettings }) {
           <ul className="mt-4 space-y-2.5">
             {legal.map((l) => (
               <li key={l.href}>
-                <Link href={l.href} className="text-sm hover:text-white">
+                <Link href={l.href} className="text-sm transition-colors duration-200 hover:text-white">
                   {l.label}
                 </Link>
               </li>
@@ -80,11 +83,15 @@ export default function Footer({ settings: site }: { settings: SiteSettings }) {
           <h3 className="text-sm font-semibold text-white">Contact & Hours</h3>
           <ul className="mt-4 space-y-2.5 text-sm">
             <li>
-              <a href={site.phoneHref} className="hover:text-white">
-                📞 {site.phone}
+              <a href={site.phoneHref} className="inline-flex items-center gap-2.5 transition-colors duration-200 hover:text-white">
+                <Phone aria-hidden="true" className="h-4 w-4 text-liberty-gold" />
+                {site.phone}
               </a>
             </li>
-            <li>🖨 Fax: {site.fax}</li>
+            <li className="inline-flex items-center gap-2.5">
+              <Printer aria-hidden="true" className="h-4 w-4 text-slate-500" />
+              Fax: {site.fax}
+            </li>
           </ul>
           <ul className="mt-4 space-y-1.5 text-sm text-slate-400">
             {site.hours.map((h) => (
@@ -96,6 +103,8 @@ export default function Footer({ settings: site }: { settings: SiteSettings }) {
           </ul>
         </div>
       </div>
+
+      <AccreditationStrip />
 
       <div className="border-t border-navy-800">
         <div className="container-site flex flex-col items-center justify-between gap-2 py-5 text-xs text-slate-500 sm:flex-row">

@@ -1,18 +1,17 @@
 import { NextResponse } from "next/server";
 import { resendMfaCode } from "@/lib/auth";
 import { getClientIp } from "@/lib/request";
+import { createRateLimiter } from "@/lib/rate-limit";
 
-// Simple in-memory throttle: one resend per pending challenge per 30s window.
-const lastResend = new Map<string, number>();
+// One resend per client per 30s window.
+const limiter = createRateLimiter({ limit: 1, windowMs: 30_000 });
 
 /** Re-sends the code for the browser's pending verification challenge. */
 export async function POST(request: Request) {
   const ip = getClientIp(request);
-  const now = Date.now();
-  if ((lastResend.get(ip) ?? 0) > now - 30_000) {
+  if (limiter.hit(ip)) {
     return NextResponse.json({ error: "Please wait a moment before requesting another code." }, { status: 429 });
   }
-  lastResend.set(ip, now);
 
   const result = await resendMfaCode();
   if (!result.ok) {

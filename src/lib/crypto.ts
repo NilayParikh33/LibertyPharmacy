@@ -75,6 +75,22 @@ export function verifyPassword(password: string, stored: string): boolean {
   return timingSafeEqual(actual, expected);
 }
 
+// A real scrypt hash of a random password nobody knows, computed once.
+const DUMMY_HASH = hashPassword(randomBytes(32).toString("base64"));
+
+/**
+ * Spends the same scrypt work as verifyPassword() and always returns false.
+ *
+ * Call it when the account being logged into does not exist. Without it an
+ * unknown email/username answers ~10x faster than a real one (no scrypt runs),
+ * and that timing difference reveals who has an account — for a pharmacy, the
+ * patient roster itself (SECURITY-AUDIT.md, SEC-002c / SEC-011).
+ */
+export function burnPasswordCheck(password: string): false {
+  verifyPassword(password, DUMMY_HASH);
+  return false;
+}
+
 export function generateSessionToken(): string {
   return randomBytes(32).toString("base64url");
 }

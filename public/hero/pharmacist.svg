@@ -1,0 +1,148 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="100 64 400 656" role="img" aria-label="Illustration of a pharmacist holding a prescription bottle">
+  <defs>
+    <linearGradient id="arch" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2f5592"/>
+      <stop offset="1" stop-color="#1b2a47"/>
+    </linearGradient>
+    <linearGradient id="coat" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#e3e8f1"/>
+      <stop offset="0.35" stop-color="#f8fafd"/>
+      <stop offset="0.7" stop-color="#f3f6fa"/>
+      <stop offset="1" stop-color="#d6dce8"/>
+    </linearGradient>
+    <linearGradient id="sleeve" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#d5dbe7"/>
+      <stop offset="0.6" stop-color="#eef2f7"/>
+      <stop offset="1" stop-color="#dfe4ee"/>
+    </linearGradient>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8a4512"/>
+      <stop offset="0.35" stop-color="#d0852f"/>
+      <stop offset="0.55" stop-color="#e3a052"/>
+      <stop offset="1" stop-color="#9a5418"/>
+    </linearGradient>
+    <linearGradient id="skinShade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b87752"/>
+      <stop offset="1" stop-color="#c98a64"/>
+    </linearGradient>
+    <clipPath id="archClip">
+      <path d="M110 720 V300 A190 190 0 0 1 490 300 V720 Z"/>
+    </clipPath>
+  </defs>
+
+  <!-- Backdrop: arched window onto pharmacy shelves -->
+  <path d="M110 720 V300 A190 190 0 0 1 490 300 V720 Z" fill="url(#arch)"/>
+  <g clip-path="url(#archClip)" opacity="0.55">
+    <!-- shelves -->
+    <g fill="#3c5d93">
+      <rect x="100" y="262" width="400" height="7" rx="2"/>
+      <rect x="100" y="382" width="400" height="7" rx="2"/>
+      <rect x="100" y="502" width="400" height="7" rx="2"/>
+      <rect x="100" y="622" width="400" height="7" rx="2"/>
+    </g>
+    <!-- stock on the shelves -->
+    <g>
+      <rect x="126" y="214" width="26" height="48" rx="5" fill="#5f84bf"/><rect x="124" y="206" width="30" height="12" rx="3" fill="#8fb0dd"/>
+      <rect x="160" y="226" width="22" height="36" rx="4" fill="#c98a3a"/><rect x="158" y="218" width="26" height="10" rx="3" fill="#e9eef6"/>
+      <rect x="418" y="220" width="40" height="42" rx="3" fill="#4d74b0"/>
+      <rect x="462" y="210" width="24" height="52" rx="5" fill="#6f93c9"/><rect x="460" y="202" width="28" height="11" rx="3" fill="#e9eef6"/>
+      <rect x="120" y="334" width="44" height="48" rx="3" fill="#4d74b0"/><rect x="126" y="346" width="32" height="14" rx="2" fill="#8fb0dd"/>
+      <rect x="170" y="344" width="22" height="38" rx="4" fill="#c98a3a"/><rect x="168" y="336" width="26" height="10" rx="3" fill="#e9eef6"/>
+      <rect x="198" y="350" width="20" height="32" rx="4" fill="#6f93c9"/>
+      <rect x="400" y="342" width="22" height="40" rx="4" fill="#c98a3a"/><rect x="398" y="334" width="26" height="10" rx="3" fill="#e9eef6"/>
+      <rect x="428" y="330" width="48" height="52" rx="3" fill="#5f84bf"/><rect x="434" y="344" width="36" height="14" rx="2" fill="#a9c2e6"/>
+      <rect x="116" y="458" width="30" height="44" rx="5" fill="#6f93c9"/><rect x="114" y="450" width="34" height="11" rx="3" fill="#e9eef6"/>
+      <rect x="152" y="466" width="40" height="36" rx="3" fill="#4d74b0"/>
+      <rect x="418" y="454" width="26" height="48" rx="5" fill="#c98a3a"/><rect x="416" y="446" width="30" height="11" rx="3" fill="#e9eef6"/>
+      <rect x="450" y="462" width="40" height="40" rx="3" fill="#5f84bf"/>
+    </g>
+  </g>
+
+  <!-- Hair, back layer and bun -->
+  <circle cx="300" cy="112" r="36" fill="#2a1b14"/>
+  <path d="M224 222 C218 150 252 104 300 104 C348 104 382 150 376 222 C370 246 360 250 356 236 L244 236 C240 250 230 246 224 222 Z" fill="#2a1b14"/>
+
+  <!-- Neck -->
+  <path d="M276 246 L276 318 Q300 336 324 318 L324 246 Z" fill="#c98a64"/>
+  <path d="M276 262 Q300 292 324 262 L324 290 Q300 306 276 290 Z" fill="#b0704c" opacity="0.7"/>
+
+  <!-- Ears -->
+  <ellipse cx="238" cy="212" rx="12" ry="18" fill="#c98a64"/>
+  <ellipse cx="362" cy="212" rx="12" ry="18" fill="#c98a64"/>
+  <circle cx="238" cy="232" r="4" fill="#d4a848"/>
+  <circle cx="362" cy="232" r="4" fill="#d4a848"/>
+
+  <!-- Face -->
+  <path d="M300 126 C350 126 366 168 364 208 C362 252 334 288 300 290 C266 288 238 252 236 208 C234 168 250 126 300 126 Z" fill="#d49870"/>
+
+  <!-- Hair, front: side part sweeping to the left -->
+  <path d="M232 216 C222 150 258 108 306 108 C356 108 380 150 368 214 C362 182 348 158 322 148 C302 168 270 180 240 182 C236 194 234 204 232 216 Z" fill="#2a1b14"/>
+  <path d="M262 124 C286 112 318 112 340 124" stroke="#4a3226" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.8"/>
+
+  <!-- Features -->
+  <path d="M258 192 Q272 184 288 189" stroke="#2a1b14" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+  <path d="M312 189 Q328 184 342 192" stroke="#2a1b14" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+  <ellipse cx="274" cy="210" rx="6.5" ry="7.5" fill="#2a1b14"/>
+  <ellipse cx="326" cy="210" rx="6.5" ry="7.5" fill="#2a1b14"/>
+  <circle cx="276" cy="207" r="2" fill="#ffffff"/>
+  <circle cx="328" cy="207" r="2" fill="#ffffff"/>
+  <path d="M293 236 Q300 242 307 236" stroke="#b0704c" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+  <path d="M302 212 Q305 224 304 232" stroke="#c4845f" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.7"/>
+  <ellipse cx="258" cy="240" rx="13" ry="7" fill="#e07c6e" opacity="0.35"/>
+  <ellipse cx="342" cy="240" rx="13" ry="7" fill="#e07c6e" opacity="0.35"/>
+  <path d="M281 254 Q300 272 319 254 Q300 261 281 254 Z" fill="#9c3f35"/>
+  <path d="M286 257 Q300 262 314 257 L312 260 Q300 264 288 260 Z" fill="#ffffff"/>
+
+  <!-- Coat body -->
+  <path d="M150 352 C172 330 230 318 266 312 L300 332 L334 312 C370 318 428 330 450 352 C472 384 480 470 482 720 L118 720 C120 470 128 384 150 352 Z" fill="url(#coat)"/>
+
+  <!-- Scrubs showing between the coat panels, with the V-neck -->
+  <path d="M264 312 L300 332 L336 312 L326 720 L274 720 Z" fill="#284577"/>
+  <path d="M280 316 L300 364 L320 316 Q300 330 280 316 Z" fill="#c98a64"/>
+  <path d="M278 314 L300 366 L322 314" stroke="#1b2a47" stroke-width="4" fill="none" stroke-linejoin="round"/>
+
+  <!-- Lapels -->
+  <path d="M266 310 L238 334 L256 378 L242 394 L288 478 L276 720 L262 720 L270 478 Z" fill="#e8ecf3"/>
+  <path d="M266 310 L238 334 L256 378 L242 394 L288 478" stroke="#c3cad8" stroke-width="2.5" fill="none" stroke-linejoin="round"/>
+  <path d="M334 310 L362 334 L344 378 L358 394 L312 478 L324 720 L338 720 L330 478 Z" fill="#e8ecf3"/>
+  <path d="M334 310 L362 334 L344 378 L358 394 L312 478" stroke="#c3cad8" stroke-width="2.5" fill="none" stroke-linejoin="round"/>
+
+  <!-- Chest pocket, pen and badge -->
+  <path d="M188 432 L244 432" stroke="#c3cad8" stroke-width="3" stroke-linecap="round"/>
+  <rect x="204" y="398" width="7" height="36" rx="3" fill="#284577"/>
+  <rect x="210" y="400" width="3" height="18" rx="1.5" fill="#d4a848"/>
+  <rect x="192" y="448" width="50" height="30" rx="5" fill="#d4a848"/>
+  <rect x="199" y="456" width="16" height="14" rx="3" fill="#fff8e6"/>
+  <rect x="220" y="457" width="16" height="4" rx="2" fill="#fff8e6"/>
+  <rect x="220" y="465" width="11" height="4" rx="2" fill="#fff8e6"/>
+
+  <!-- Left arm, hanging (viewer's left) -->
+  <path d="M152 350 C128 384 120 470 118 560 L114 720 L172 720 L176 560 C178 486 180 424 190 392 Z" fill="url(#sleeve)"/>
+  <path d="M176 560 C178 486 180 424 190 392" stroke="#c3cad8" stroke-width="2.5" fill="none"/>
+
+  <!-- Right arm, raised, holding the prescription bottle -->
+  <path d="M448 350 C474 384 486 470 488 556 C490 592 454 606 432 584 L416 420 Z" fill="url(#sleeve)"/>
+  <path d="M488 552 C490 590 456 606 432 586 L390 510 L434 482 Z" fill="#e6eaf2"/>
+  <path d="M432 586 L390 510" stroke="#c3cad8" stroke-width="2.5"/>
+  <!-- cuff -->
+  <path d="M388 514 L436 486 L428 470 L380 498 Z" fill="#d5dbe7"/>
+
+  <!-- Bottle -->
+  <rect x="352" y="378" width="54" height="96" rx="8" fill="url(#amber)"/>
+  <rect x="348" y="358" width="62" height="26" rx="6" fill="#f6f8fb"/>
+  <rect x="348" y="376" width="62" height="5" fill="#d5dbe7"/>
+  <rect x="358" y="398" width="42" height="42" rx="3" fill="#fffaf0"/>
+  <rect x="363" y="405" width="20" height="5" rx="2" fill="#284577"/>
+  <rect x="363" y="414" width="31" height="3" rx="1.5" fill="#95b1d8"/>
+  <rect x="363" y="421" width="26" height="3" rx="1.5" fill="#95b1d8"/>
+  <rect x="363" y="428" width="29" height="3" rx="1.5" fill="#95b1d8"/>
+  <rect x="357" y="384" width="6" height="84" rx="3" fill="#ffffff" opacity="0.25"/>
+
+  <!-- Hand gripping the bottle -->
+  <path d="M396 440 C414 438 424 452 422 470 C420 490 404 500 388 496 Z" fill="#c98a64"/>
+  <rect x="348" y="440" width="54" height="13" rx="6.5" fill="#d49870"/>
+  <rect x="346" y="452" width="56" height="13" rx="6.5" fill="#d0936b"/>
+  <rect x="348" y="464" width="52" height="12" rx="6" fill="#cc8e66"/>
+  <rect x="352" y="475" width="46" height="11" rx="5.5" fill="#c98a64"/>
+  <path d="M356 446 L398 446 M354 458 L398 458 M356 470 L396 470" stroke="#b0704c" stroke-width="1.5" opacity="0.6"/>
+</svg>

@@ -4,6 +4,7 @@ import { updatePost, deletePost } from "@/lib/posts";
 import { postSchema } from "../route";
 import { audit } from "@/lib/db";
 import { getClientIp } from "@/lib/request";
+import { parseId } from "@/lib/ids";
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const admin = await getCurrentAdmin();
@@ -11,7 +12,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  const { id } = await params;
+  const id = parseId((await params).id);
+  if (id === null) {
+    return NextResponse.json({ error: "Not found." }, { status: 404 });
+  }
   let body: unknown;
   try {
     body = await request.json();
@@ -25,7 +29,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   }
 
   try {
-    await updatePost(Number(id), parsed.data);
+    await updatePost(id, parsed.data);
     await audit({
       actor: `admin:${admin.username}`,
       action: "admin.post.update",
@@ -44,8 +48,11 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   if (!admin) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
-  const { id } = await params;
-  await deletePost(Number(id));
+  const id = parseId((await params).id);
+  if (id === null) {
+    return NextResponse.json({ error: "Not found." }, { status: 404 });
+  }
+  await deletePost(id);
   await audit({
     actor: `admin:${admin.username}`,
     action: "admin.post.delete",

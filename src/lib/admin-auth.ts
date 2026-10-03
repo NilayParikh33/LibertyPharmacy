@@ -5,6 +5,7 @@ import { getDb, audit } from "@/lib/db";
 import {
   hashPassword,
   verifyPassword,
+  burnPasswordCheck,
   generateSessionToken,
   hashSessionToken,
   encryptPHI,
@@ -123,7 +124,9 @@ export async function verifyAdminLogin(
   token: string
 ): Promise<AdminUser | null> {
   const row = await findAdmin(username);
-  if (!row) return null;
+  // Unknown usernames spend the same scrypt time as real ones, so response
+  // time doesn't reveal which staff usernames exist (SEC-011).
+  if (!row) return burnPasswordCheck(password) || null;
   if (!verifyPassword(password, row.password_hash)) return null;
 
   // Scoped per user so one account's code can't be replayed against another.

@@ -1,8 +1,13 @@
 import Link from "next/link";
 import { getPosts } from "@/lib/posts";
 import DeletePostButton from "@/components/admin/DeletePostButton";
+import { requireAdmin } from "@/lib/admin-auth";
 
+// Authorization is enforced here, not only in the (protected) layout: with
+// partial rendering a soft navigation re-renders just this page segment, so a
+// layout-level check alone can be skipped (see SECURITY-AUDIT.md, SEC-001).
 export default async function AdminPostsPage() {
+  await requireAdmin();
   const posts = await getPosts();
 
   return (

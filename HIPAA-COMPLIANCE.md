@@ -27,6 +27,10 @@ implemented in code:
 - **Audit controls (§164.312(b))** — `audit_log` records every registration,
   login success/failure, and patient-record read with actor, action, outcome,
   IP, and timestamp. No PHI values are ever written to the log.
+- **Refill / transfer requests** — `rx_requests.details` (drug names, Rx
+  numbers, the other pharmacy) and `staff_note` are AES-256-GCM ciphertext.
+  `audit_log` records create/update/list events with ids, kind and status only.
+  Staff notification email is content-free. Nothing is sent to DRX.
 - **Session security** — 30-minute expiry, httpOnly + SameSite=Lax + Secure
   cookies, tokens stored only as SHA-256 hashes.
 - **Access safeguards** — generic auth errors (no account enumeration),
@@ -69,10 +73,14 @@ migration later:
     delivery channel is configured.
 - Footer states the site's no-PHI posture.
 
-### Transport & browser security (`next.config.mjs`)
+### Transport & browser security (`next.config.mjs`, `src/middleware.ts`)
 - `Strict-Transport-Security` (2 years, includeSubDomains, preload).
-- `Content-Security-Policy`: self-origin only for scripts/styles/connections;
-  `frame-ancestors 'none'`; `form-action 'self'`; `upgrade-insecure-requests`.
+- `Content-Security-Policy` (set per request in `src/middleware.ts`): scripts
+  only with a per-request nonce (no `'unsafe-inline'`); self-origin only for
+  styles/images/fonts/connections; `frame-ancestors 'none'`;
+  `form-action 'self'`; `upgrade-insecure-requests`.
+- API responses are `Cache-Control: no-store`; state-changing API calls must
+  come from this site (Sec-Fetch-Site / Origin check) with a JSON body.
 - `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
   `Referrer-Policy: strict-origin-when-cross-origin`,
   `Permissions-Policy` denying camera/mic/geolocation/payment,
@@ -92,6 +100,16 @@ migration later:
   **Must be reviewed by the pharmacy's Privacy Officer/counsel before launch.**
 
 ---
+
+### Production-only guarantees (`src/lib/deployment.ts`)
+The same code also runs demo deployments with fake data (e.g. Render). Their
+demo conveniences can never apply to the production patient-data deployment,
+which is identified by its Amazon RDS database:
+- `DEMO_SHOW_OTP_ON_SCREEN` and `DEMO_LOG_OTP_CODES` are **refused** on RDS, so
+  sign-in and verification codes are only ever delivered by email.
+- `DB_SSL_MODE` values other than `verify-ca` are **ignored** on RDS, so the
+  database connection is always TLS-verified against Amazon's CA.
+Either being set on the production deployment is logged at startup.
 
 ## 2. Operational checklist (required before/at launch)
 
@@ -116,7 +134,22 @@ migration later:
       associate (or subcontractor) when handling PHI on the pharmacy's behalf.
 - [ ] Keep all DRX API calls **server-side** (`src/lib/drx.ts` + API routes);
       never expose API keys or PHI-bearing endpoints directly to the browser.
-- [ ] Add the DRX origin to `connect-src` in the CSP (`next.config.mjs`).
+- [x] No CSP change needed: DRX is called only from the server, never the
+      browser, so `connect-src` stays `'self'`.
+- [x] Medication lists are read live from DRX and never stored; only the
+      minimum fields are shown; each view is audited (`patient.medications.view`).
+- [x] Account-to-DRX linking needs an Rx number, the exact date of birth on the
+      verified account, and one name word in common; attempts are rate-limited
+      and failures are indistinguishable. The `prescription` permission it uses
+      also returns prescriber and fill data; `drxPrescriptionOwner` keeps only
+      the patient id, name and date of birth.
+- [x] Website work handed to staff as DRX To-Dos carries PHI in the note; this
+      relies on the DRX BAA. Logs and audit entries carry ids and outcomes only.
+- [ ] Set `DRX_ENABLED=true` **only after the BAA is signed**. With
+      just the URL and key set, the admin panel checks the key (`/heartbeat`,
+      no PHI) and nothing else is sent.
+- [ ] The DRX key carries only `heartbeat`, `refillrequest`, `prescription`, `todo`,
+      `patientprofile`, and is IP-restricted to the production server.
 - [ ] Tighten CSP: replace `'unsafe-inline'` in `script-src` with nonces
       before handling PHI in the browser.
 - [ ] **Authentication**: portal sessions must use secure, httpOnly,

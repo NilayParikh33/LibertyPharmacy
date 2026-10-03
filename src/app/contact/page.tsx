@@ -1,4 +1,7 @@
 import type { Metadata } from "next";
+import { Clock, MapPin, Phone } from "lucide-react";
+import Reveal from "@/components/Reveal";
+import { stagger } from "@/lib/motion";
 import PageHero from "@/components/PageHero";
 import ContactForm from "@/components/ContactForm";
 import { getSiteSettings } from "@/lib/site";
@@ -13,6 +16,7 @@ export default async function ContactPage() {
   return (
     <>
       <PageHero
+        eyebrow="Contact"
         title="Contact Us"
         subtitle="Questions about hours, products, or services? We'd love to hear from you."
       />
@@ -20,9 +24,9 @@ export default async function ContactPage() {
       <section className="py-16">
         <div className="container-site grid gap-10 lg:grid-cols-[1fr,1.4fr]">
           <div className="space-y-6">
-            <div className="card">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                🗺 Address
+            <Reveal as="div" className="card">
+              <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+                <MapPin aria-hidden="true" className="h-4 w-4 text-navy-600" /> Address
               </h2>
               <p className="mt-2 text-slate-700">
                 {site.address.line1}
@@ -37,10 +41,10 @@ export default async function ContactPage() {
               >
                 Get directions →
               </a>
-            </div>
-            <div className="card">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                📞 Phone & Fax
+            </Reveal>
+            <Reveal as="div" delay={stagger(1)} className="card">
+              <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+                <Phone aria-hidden="true" className="h-4 w-4 text-navy-600" /> Phone & Fax
               </h2>
               <p className="mt-2 text-slate-700">
                 Phone:{" "}
@@ -50,10 +54,10 @@ export default async function ContactPage() {
                 <br />
                 Fax: {site.fax}
               </p>
-            </div>
-            <div className="card">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                🕐 Store Hours
+            </Reveal>
+            <Reveal as="div" delay={stagger(2)} className="card">
+              <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+                <Clock aria-hidden="true" className="h-4 w-4 text-navy-600" /> Store Hours
               </h2>
               <ul className="mt-2 space-y-1 text-sm text-slate-700">
                 {site.hours.map((h) => (
@@ -63,8 +67,8 @@ export default async function ContactPage() {
                   </li>
                 ))}
               </ul>
-            </div>
-            <div className="rounded-xl border border-navy-100 bg-navy-50 p-5 text-sm leading-6 text-navy-900">
+            </Reveal>
+            <div className="rounded-2xl border border-navy-100 bg-navy-50 p-5 text-sm leading-6 text-navy-900">
               <strong>Need to discuss a prescription or your health?</strong>
               <br />
               Please call us directly — phone conversations with our
