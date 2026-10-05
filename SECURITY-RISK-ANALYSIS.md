@@ -96,6 +96,17 @@ Patient browser ──HTTPS──> Next.js app ──TLS (verified CA)──> Po
 Pharmacy staff ──HTTPS──> Admin panel ──> Contact messages, site settings, blog posts
 ```
 
+With `DRX_ENABLED=true` (only after the DRX BAA; see §7D), the app also
+exchanges ePHI with the pharmacy's dispensing system:
+
+```
+Next.js app ──HTTPS + X-DRX-Key──> DRX External API (liberty.drxapp.com)
+   ├─ out: refill requests (Rx numbers, DOB, delivery method, note)
+   ├─ out: DRX To-Dos (transfers, refills DRX rejected, contact messages:
+   │        name, DOB, phone, email, medications)
+   └─ in:  prescription owner (link check), medication list, To-Do status
+```
+
 ### 2.4 Technical controls currently implemented
 
 Verified present in code as of this draft:
@@ -266,6 +277,11 @@ throttle). Two consequences:
 This is currently latent — it becomes real the moment a second instance is
 provisioned for availability.
 
+**Also depends on a single instance (2026-10-02):** the DRX To-Do sync
+(`src/lib/drx-todos.ts`) runs one pass at a time per process. With two tasks,
+both could create a DRX To-Do for the same request, giving staff duplicates.
+Moving that lock into the database belongs with this remediation.
+
 **Remediation:** move counters to shared storage (a database table, or
 ElastiCache) before running more than one instance. Alternatively, document
 that the deployment is pinned to a single instance and re-assess if that
@@ -396,7 +412,8 @@ it is a required specification with no "addressable" flexibility.*
 ### A-03 — Business Associate Agreements · **Required** · §164.308(b)(1)
 - [ ] **AWS** — executed via AWS Artifact (self-service, no cost).
       Date: __________
-- [ ] **DRx** — required before integration. Date: __________
+- [ ] **DRx** — required before `DRX_ENABLED=true` (patient data in refills,
+      To-Dos and medication lists; see §7D). Date: __________
 - [ ] Any other vendor touching ePHI (email, backup, IT support, billing)
 - [ ] A BAA register is maintained listing each associate, execution date, and
       services covered
@@ -587,6 +604,39 @@ are separate obligations and are cited separately.
 - **T-05 rotation**: a written, tested key-rotation procedure.
 - **All of §5 and §6**: unchanged — these remain the pharmacy's to complete,
   and no technical work substitutes for them.
+
+## 7D. DRX Integration — risk review (2026-10-02)
+
+Covers the code on branch `claude/dreamy-keller-bggslh`. **Not yet live:**
+nothing reaches DRX until `DRX_ENABLED=true`, which is set only after the DRX
+BAA (A-03) is executed. With just the API URL and key set, the only call is
+`GET /heartbeat`, which carries no PHI.
+
+| Area | Control | Where |
+|---|---|---|
+| Business associate | DRX holds and receives ePHI; BAA required before enabling | A-03 |
+| Credential | API key server-side only, in Secrets Manager; never in git, image or browser bundle (checked); sent only over HTTPS; key restricted to the production egress IP | `src/lib/drx.ts` |
+| Minimum necessary (key) | Permissions limited to `heartbeat`, `prescription`, `patientprofile`, `refillrequest`, `todo`; `settings`, `partnerverify`, `patient`, `claim`, `pointofsale` never granted | `.env.example` |
+| Minimum necessary (data) | Prescription lookup keeps only patient id, name, DOB; medication list shows drug, directions, prescriber, dates, quantity, last fill (no copay, insurance, NDC); read live, never stored | `drx-link.ts`, `drx.ts` |
+| Identity / account linking | Link needs an Rx number + the exact DOB on the email-verified account + one shared name word; 5 tries per account and 20 per address per hour; identical failure messages; every prescription shown is checked to belong to the linked patient | `drx-link.ts` |
+| Staff hand-off | Transfers, rejected refills and contact messages become DRX To-Dos (ePHI in the note, under the DRX BAA) instead of email | `drx-todos.ts` |
+| Logging / audit | No request or response bodies logged; audit entries carry ids, counts and outcomes only (`drx.*` actions appear in `npm run audit:report`) | throughout |
+| Availability | Requests are stored before DRX is called; DRX outages only delay forwarding and To-Dos (retried) | `drx-refills.ts`, `drx-todos.ts` |
+
+**Residual risks**
+
+- **Single instance** (T-03): the To-Do sync assumes one task.
+- **Key compromise**: the `prescription` and `patientprofile` permissions can
+  read any patient's prescriptions. Mitigated by Secrets Manager, IP
+  restriction and least-privilege permissions. If exposed, delete the key in
+  DRX at once and issue a new one; treat it as a possible breach (A-06).
+- **Wrong date of birth at registration**: the patient cannot link and must
+  call; there is deliberately no self-service DOB change.
+
+**Before go-live:** BAA executed; production egress through a fixed Elastic
+IP (NAT Gateway) and the key restricted to it; ownership of `patients`,
+`rx_requests` and `contact_messages` confirmed for the application role (the
+app adds columns at startup); staging test passed; test keys deleted.
 
 ## 7B. Backup Restore Test — 2026-08-27
 

@@ -31,7 +31,9 @@ npm run build    # production build
 | `/blog`, `/blog/[slug]` | Static blog (swap `src/lib/posts.ts` for a CMS later) |
 | `/locations` | Address, hours, map link |
 | `/contact` | Contact info + no-PHI general inquiry form |
-| `/portal` | Patient portal placeholder — auto-activates when DRX is configured |
+| `/portal` | Patient portal — sign in, request refills/transfers, see request status |
+| `/portal/refill`, `/portal/transfer` | Refill and prescription-transfer request forms (signed-in patients) |
+| `/admin/requests` | Staff queue for those requests (admin + MFA) |
 | `/privacy-policy` | Website privacy policy |
 | `/hipaa-notice` | HIPAA Notice of Privacy Practices (template — legal review required) |
 
@@ -58,6 +60,26 @@ Every animation is disabled under `prefers-reduced-motion`. Scroll-revealed
 content is force-shown by a `<noscript>` style in `src/app/layout.tsx` and by a
 fallback in `Reveal.tsx`, so **motion can never leave content invisible** —
 keep that guarantee if you add new effects.
+
+## Refill and transfer requests
+
+Patients file refill and transfer requests from the portal. They are stored
+encrypted (`rx_requests` table, `src/lib/rx-requests.ts`), audited, and
+announced to the pharmacy by a content-free email; staff work them in
+`/admin/requests` and mark them in progress / completed / cancelled. Nothing
+goes to DRX unless `DRX_ENABLED=true` (set it only after the DRX BAA
+is signed). When it is on, patients link their account to their pharmacy
+record with one Rx number (checked against their name and date of birth) and
+see their medications at `/portal/medications`. Staff work only in DRX:
+transfers, refills DRX did not accept and contact messages become DRX To-Dos
+(`src/lib/drx-todos.ts`), and ticking one done in DRX completes it for the
+patient. Refills are also forwarded to the DRX External API
+(`POST /refill-request`, `src/lib/drx-refills.ts`) after they are stored;
+anything DRX does not accept stays in the staff queue, with DRX's reason shown
+in `/admin/requests` and a "Send to DRX again" button. DRX has no transfer-in
+endpoint, so transfers always stay with staff. (The separate DRX Connect key
+is clinic scheduling only.) Set `NEXT_PUBLIC_DRX_STORE_URL` (at build time)
+to show an "Or use our DRX refill site" link on the portal's refill card.
 
 ## DRX integration (future)
 

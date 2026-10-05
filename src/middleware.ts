@@ -47,7 +47,8 @@ function contentSecurityPolicy(nonce: string): string {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self'",
-    // When DRX integration lands, add the DRX API origin here.
+    // DRX is called only from the server (src/lib/drx.ts), never the browser,
+    // so it does not belong here.
     "connect-src 'self'",
     "frame-ancestors 'none'",
     "form-action 'self'",
