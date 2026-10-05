@@ -188,9 +188,13 @@ Step by step:
    real-looking, etc. If anything fails, a friendly error comes back and
    **nothing is saved**.
 5. `registerPatient()` in `src/lib/auth.ts` runs:
-   - Checks the email isn't already registered (returns a generic error
-     either way, so nobody can use this to discover which emails already
-     have accounts).
+   - Checks the email isn't already registered. If it is, the response is
+     **identical** to a new signup (same "check your email" screen), so nobody
+     can use this to discover which emails already have accounts (SEC-002).
+     The real owner is emailed a notice with **Sign in** and **Forgot
+     password** links instead of a code, and the verify screen's wording and
+     links cover both cases without saying which one applies. Whether that
+     notice was sent is recorded as `auth.register.account_exists_notice`.
    - Hashes the password (see §6.5 — the real password is never stored).
    - **Encrypts** every sensitive field (name, DOB, address, allergies,
      insurance...) before writing it to the database (see §6.6).
@@ -569,6 +573,9 @@ database `DATABASE_URL` points to (set it in `.env.local` — see
 ---
 
 ## 14. What's next (roadmap)
+
+> The live setup, what was fixed on 2026-10-05, and the full pending list are
+> in [`DEPLOYMENT-AWS.md`](DEPLOYMENT-AWS.md). Parts of this section predate it.
 
 Email verification and login MFA (§6.3) — previously listed here as
 upcoming — are now built. What's still ahead per `HIPAA-COMPLIANCE.md` and

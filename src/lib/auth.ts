@@ -89,17 +89,17 @@ const enc = (v: string | undefined | null) => (v ? encryptPHI(v) : null);
 export async function registerPatient(
   input: RegistrationInput,
   ip?: string
-): Promise<{ ok: true; accountId: number } | { ok: false; duplicate: true }> {
+): Promise<{ ok: true; accountId: number } | { ok: false; duplicate: true; accountId: number }> {
   const db = await getDb();
   const email = input.email.trim().toLowerCase();
 
-  const existing = await db.prepare("SELECT id FROM accounts WHERE email = ?").get(email);
+  const existing = await db.prepare("SELECT id FROM accounts WHERE email = ?").get<{ id: number }>(email);
   if (existing) {
     // Match the scrypt cost of the new-account path below, so response time
     // doesn't reveal that this email is taken.
     burnPasswordCheck(input.password);
     await audit({ actor: "anonymous", action: "auth.register", outcome: "failure", detail: "duplicate_email", ip });
-    return { ok: false, duplicate: true };
+    return { ok: false, duplicate: true, accountId: existing.id };
   }
 
   const accountId = await db.transaction(async () => {

@@ -269,8 +269,9 @@ throttle). Two consequences:
 
 - **State is lost on restart or redeploy.** An attacker who is locked out can
   simply wait for the next deployment.
-- **State is not shared across instances.** The included `Dockerfile` targets
-  a containerized deployment (ECS/Fargate). If more than one task ever runs,
+- **State is not shared across instances.** Production runs the `Dockerfile`
+  image as a single container on one EC2 instance (see `DEPLOYMENT-AWS.md`),
+  not on ECS. If more than one instance or task ever runs,
   an attacker gets N× the allowed attempts by distributing requests across
   tasks, and lockout becomes largely decorative.
 
@@ -633,8 +634,9 @@ BAA (A-03) is executed. With just the API URL and key set, the only call is
 - **Wrong date of birth at registration**: the patient cannot link and must
   call; there is deliberately no self-service DOB change.
 
-**Before go-live:** BAA executed; production egress through a fixed Elastic
-IP (NAT Gateway) and the key restricted to it; ownership of `patients`,
+**Before go-live:** BAA executed; the key restricted to the instance's
+Elastic IP **34.204.134.17** (production is one EC2 instance, see
+`DEPLOYMENT-AWS.md`); ownership of `patients`,
 `rx_requests` and `contact_messages` confirmed for the application role (the
 app adds columns at startup); staging test passed; test keys deleted.
 

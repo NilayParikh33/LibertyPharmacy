@@ -1,0 +1,207 @@
+# AWS production deployment — how it actually runs
+
+Recorded 2026-10-05 from the live account (AWS account `429186228745`,
+region `us-east-1`). Some older documents describe an ECS/Fargate
+deployment; that is **not** what is running. This file is the source of truth
+for the live setup, what was fixed on 2026-10-05, and what is still pending.
+
+---
+
+## 1. What is running
+
+| Piece | Live value |
+|---|---|
+| Domain | `rxlibertypharmacy.com` (registered at Namecheap; DNS hosted in **Route 53**) |
+| Server | EC2 instance `liberty-pharmacy-web` (`i-04fe7a19b7d9e6dd8`), t4g.micro, `us-east-1a` |
+| Public IP | Elastic IP **34.204.134.17** (fixed; use it for any IP allow-list, e.g. the DRX key) |
+| App | Docker container `liberty-app` (image `liberty-app:latest`), Next.js on port 3000 |
+| TLS / reverse proxy | Docker container `caddy` (`caddy:2-alpine`) on ports 80/443 |
+| Database | RDS PostgreSQL `liberty-pharmacy-db` (db.t4g.micro), TLS verified with the RDS CA bundle |
+| Instance IAM role | `liberty-pharmacy-ec2-role` (ECR read-only, SSM core, `liberty-pharmacy-secrets-read`, `liberty-pharmacy-ses-send`) |
+| Secrets Manager | `liberty-pharmacy/database-url` |
+| Email | Amazon SES, `us-east-1` (see §3) |
+| BAA | AWS Business Associate Addendum **Active**, accepted 2026-08-27 |
+| Shell access | AWS Systems Manager → **Session Manager** → `liberty-pharmacy-web` (no SSH key needed) |
+
+There are no ECS clusters in the account. The rate limiters and the DRX To-Do
+sync assume **one** app instance (SECURITY-RISK-ANALYSIS.md T-03), which holds
+on this setup.
+
+### Environment variables in the container (names only)
+
+```
+ADMIN_PASSWORD  ADMIN_SESSION_SECRET  ADMIN_TOTP_SECRET  ADMIN_USERNAME
+APP_BASE_URL    AWS_REGION            CONTACT_FORWARD_EMAIL
+DATABASE_URL    MAIL_REPLY_TO         NODE_ENV           PHI_ENCRYPTION_KEY
+PORT            RDS_CA_BUNDLE_PATH    SES_FROM_EMAIL
+```
+
+Non-secret values as of 2026-10-05: `SES_FROM_EMAIL=noreply@rxlibertypharmacy.com`,
+`AWS_REGION=us-east-1`, `APP_BASE_URL=https://rxlibertypharmacy.com`,
+`NODE_ENV=production`. No `DEMO_*` or `GMAIL_*` variables are set (correct
+for production). `MAIL_REPLY_TO` is left over from an older build; current
+code does not read it.
+
+To list them again (prints names only, never values):
+
+```bash
+sudo docker exec liberty-app env | cut -d= -f1 | sort
+```
+
+Not yet documented: where these values are kept on the host and how the
+container is started/redeployed (only `database-url` is in Secrets Manager).
+Write that down here the next time someone redeploys.
+
+---
+
+## 2. IAM policy the app needs to send email
+
+The app sends mail through nodemailer, which hands SES a raw MIME message, and
+it sends through the SES configuration set `liberty-transactional`. SES
+therefore checks **`ses:SendRawEmail`**, against the sending identity, the
+**configuration set**, and (while in the sandbox) the **recipient** identity.
+
+Inline policy `liberty-pharmacy-ses-send` on `liberty-pharmacy-ec2-role`:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SendPharmacyMail",
+      "Effect": "Allow",
+      "Action": ["ses:SendEmail", "ses:SendRawEmail"],
+      "Resource": [
+        "arn:aws:ses:us-east-1:429186228745:identity/*",
+        "arn:aws:ses:us-east-1:429186228745:configuration-set/*"
+      ]
+    }
+  ]
+}
+```
+
+Missing any of these makes every email fail. Before 2026-10-05 the policy
+lacked `ses:SendRawEmail` and the configuration-set resource, so **no portal
+email had ever been sent** (registration codes, sign-in codes, resets).
+
+---
+
+## 3. Amazon SES status
+
+| Item | Status |
+|---|---|
+| Domain identity `rxlibertypharmacy.com` | Verified |
+| DKIM | Easy DKIM, 2048-bit, successful |
+| SPF | Custom MAIL FROM `mail.rxlibertypharmacy.com` (MX + `v=spf1 include:amazonses.com ~all`), successful (2026-10-05) |
+| DMARC | `_dmarc.rxlibertypharmacy.com` → `v=DMARC1; p=none; rua=mailto:libertypharmacy@gmail.com` (2026-10-05) |
+| Configuration set | `liberty-transactional`, sending enabled |
+| Suppression list | Account level, bounces + complaints |
+| Feedback notifications | Bounce + Complaint → SNS `liberty-ses-notifications` → `libertypharmacy@gmail.com` (confirmed) |
+| Verified recipient addresses | `libertypharmacy@gmail.com`, `kushuvc38@gmail.com` |
+| **Account status** | **Sandbox**: 200 emails/day, and only to verified addresses |
+
+**Sandbox means real patients cannot receive any email**, so they cannot
+finish registering. Production access was requested on 2026-08-27 (support
+case 178784687300903) and refused on 2026-09-01 with a generic reply; see §5.
+
+The domain has no MX record of its own, so mail to `@rxlibertypharmacy.com`
+(e.g. replies to `noreply@`) is undeliverable. That is why patient emails say
+"do not reply"; see `src/lib/mail.ts`.
+
+---
+
+## 4. Troubleshooting email
+
+Email is sent after the HTTP response, and a failed send is **not shown to the
+user** (the page still says "check your email"). The reason is recorded in
+`audit_log`. To read the latest entries on the server (Session Manager):
+
+```bash
+sudo docker exec liberty-app sh -c 'cat > /tmp/q.js << "EOF"
+const fs = require("fs");
+const {Pool} = require("pg");
+const ca = fs.readFileSync(process.env.RDS_CA_BUNDLE_PATH, "utf8");
+const p = new Pool({connectionString: process.env.DATABASE_URL, ssl:{ca, rejectUnauthorized:true}});
+p.query("select at, action, outcome, detail from audit_log order by at desc limit 12")
+ .then(r => { console.log(JSON.stringify(r.rows, null, 1)); return p.end(); })
+ .catch(e => console.log("DB FAIL:", e.message));
+EOF
+NODE_PATH=/app/node_modules node /tmp/q.js; rm -f /tmp/q.js'
+```
+
+What to look for:
+
+| Audit row | Meaning |
+|---|---|
+| `auth.mfa.email_verify.sent` / `auth.mfa.login_mfa.sent`, `failure`, `mail_send_failed: ...` | Code email failed; `detail` gives SES's reason (e.g. a missing IAM permission) |
+| same, `success` | SES accepted it. If it doesn't arrive, check the right inbox and Gmail **spam** (`in:anywhere from:rxlibertypharmacy.com`) |
+| `auth.register`, `failure`, `duplicate_email` | Email already had an account; the owner was sent the "account exists" notice instead of a code |
+| `auth.register.account_exists_notice` | Whether that notice was sent (added 2026-10-05; before that it was not logged) |
+
+Common causes, in the order we hit them on 2026-10-05:
+1. IAM policy missing `ses:SendRawEmail` or the configuration-set resource (§2).
+2. Sandbox: recipient address not verified in SES.
+3. Wrong inbox: the code goes to the email on the account you signed into.
+4. Gmail spam: the domain is new and has no sending reputation yet.
+
+`/tmp` is writable inside the container but `/app` is not, and the AWS SDK is
+bundled into the Next.js build (it can't be `require`d from a script); `pg` can.
+
+---
+
+## 5. Status and pending work (as of 2026-10-05)
+
+### Done
+- SES domain authentication complete (DKIM, SPF via custom MAIL FROM, DMARC).
+- SES bounce/complaint notifications wired to SNS; suppression list on.
+- IAM policy fixed (§2); portal email confirmed sending
+  (`auth.mfa.email_verify.sent` → `success`, 2026-10-05 17:47 UTC).
+- AWS BAA confirmed Active (2026-08-27) and recorded in SECURITY-RISK-ANALYSIS.md.
+- Code on `aws-production` (not yet deployed, see below): DRX integration
+  (off until `DRX_ENABLED=true`), production HIPAA guard restored, real
+  domain in `metadataBase`, clearer verify screen for already-registered
+  emails, audit of the "account exists" notice.
+
+### Pending — email
+- [ ] **SES production access.** Warm up for a few days (send to verified
+      addresses, mark "Not spam"), then reopen case 178784687300903 citing the
+      new SPF/DMARC and the real sending history.
+- [ ] **Gmail reputation.** Add the domain to Google Postmaster Tools
+      (postmaster.google.com) to see how Gmail rates it. After a couple of
+      clean weeks, consider tightening DMARC to `p=quarantine`.
+- [ ] **Sender name.** AWS advises against `noreply@`. Changing to
+      `portal@rxlibertypharmacy.com` only makes sense once replies can reach
+      someone (an MX record / forwarding to the pharmacy's inbox); then also
+      update the "do not reply" note in `src/lib/mail.ts`.
+
+### Pending — deployment
+- [ ] **The live container runs code from about 2026-09-26.** Everything on
+      `aws-production` since then is not live yet. Before redeploying:
+  - [ ] Confirm the app's database role owns `patients`, `rx_requests` and
+        `contact_messages`. On startup the new code creates `rx_requests`
+        and adds columns; if the role can't, the container will not start.
+  - [ ] Keep `DRX_ENABLED` unset.
+  - [ ] Document the build/redeploy steps in §1.
+- [ ] **Node 20 → 22.** The AWS SDK warns that releases after January 2027
+      require Node ≥ 22. Update the `Dockerfile` base image (`node:20-alpine`).
+- [ ] **npm audit** (security suite SEC-012): `nodemailer` needs a major
+      upgrade; the other findings are dev-only.
+- [ ] **Test accounts in production.** Accounts created while debugging on
+      2026-10-05 (`kushuvc38@gmail.com`, `kushuvc@gmail.com`) should be
+      removed once testing is done.
+- [ ] **Seed data.** `src/lib/db.ts` seeds the contact email as
+      `info@libertypharmacyatx.com` (wrong domain). It only affects a brand-new
+      database; the live value is set in Admin → Site Settings.
+
+### Pending — DRX
+- [ ] Send the support email (BAA, staging store, To-Do visibility, Rx-number
+      conversion, key expiry, patient notifications, transfers in, technical
+      contact).
+- [ ] DRX BAA signed → record it in SECURITY-RISK-ANALYSIS.md (A-03).
+- [ ] Test on DRX staging.
+- [ ] Production key with exactly `heartbeat`, `prescription`,
+      `patientprofile`, `refillrequest`, `todo`, IP-restricted to
+      **34.204.134.17**; add `DRX_API_BASE_URL` / `DRX_API_KEY` to the
+      container environment.
+- [ ] Delete the test DRX keys that were shared in chat.
+- [ ] Only then `DRX_ENABLED=true`, and a smoke test with one consenting patient.

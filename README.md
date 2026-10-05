@@ -81,6 +81,12 @@ endpoint, so transfers always stay with staff. (The separate DRX Connect key
 is clinic scheduling only.) Set `NEXT_PUBLIC_DRX_STORE_URL` (at build time)
 to show an "Or use our DRX refill site" link on the portal's refill card.
 
+## Production on AWS
+
+How the live site actually runs (EC2 + Docker + Caddy + RDS + SES), the IAM
+policy email depends on, how to troubleshoot email, and what is still pending:
+see [`DEPLOYMENT-AWS.md`](DEPLOYMENT-AWS.md).
+
 ## DRX integration (future)
 
 The integration seam lives in:

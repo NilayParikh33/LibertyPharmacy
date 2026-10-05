@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import PageHero from "@/components/PageHero";
@@ -73,9 +74,26 @@ function VerifyForm() {
       <section className="py-16">
         <div className="container-site max-w-md">
           <form onSubmit={onSubmit} className="card space-y-5" noValidate>
-            <p className="text-sm leading-6 text-slate-600">
-              We sent a 6-digit code to your email address. It expires in 10 minutes.
-            </p>
+            {fromSignup ? (
+              // Worded for both cases without saying which one applies: a
+              // registration with an email that already has an account lands
+              // here too, and the owner is emailed sign-in help instead of a
+              // code (SEC-002). Saying so on screen would reveal the account.
+              <div className="space-y-2 text-sm leading-6 text-slate-600">
+                <p>
+                  We&apos;ve sent an email to the address you entered. If you&apos;re new, it contains a 6-digit code
+                  that expires in 10 minutes.
+                </p>
+                <p>
+                  If that email already has a Liberty Pharmacy account, the email will help you sign in instead, and no
+                  new account was created.
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm leading-6 text-slate-600">
+                We sent a 6-digit code to your email address. It expires in 10 minutes.
+              </p>
+            )}
             {demoCode && (
               <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
@@ -126,6 +144,18 @@ function VerifyForm() {
             >
               Resend code
             </button>
+            {fromSignup && (
+              <p className="border-t border-slate-200 pt-4 text-center text-sm text-slate-600">
+                Already registered?{" "}
+                <Link href="/portal/login" className="font-medium text-navy-700 underline">
+                  Sign in
+                </Link>{" "}
+                ·{" "}
+                <Link href="/portal/forgot" className="font-medium text-navy-700 underline">
+                  Forgot password?
+                </Link>
+              </p>
+            )}
           </form>
         </div>
       </section>

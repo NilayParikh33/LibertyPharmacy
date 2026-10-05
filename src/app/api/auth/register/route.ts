@@ -3,6 +3,7 @@ import { z } from "zod";
 import { registerPatient, startMfaChallenge, startDecoyChallenge } from "@/lib/auth";
 import { sendAccountExistsEmail } from "@/lib/mail";
 import { getClientIp, getAppBaseUrl } from "@/lib/request";
+import { audit } from "@/lib/db";
 import { createRateLimiter } from "@/lib/rate-limit";
 
 /**
@@ -120,7 +121,24 @@ export async function POST(request: Request) {
     await startDecoyChallenge();
     const base = getAppBaseUrl(request);
     const email = d.email.trim().toLowerCase();
-    after(() => sendAccountExistsEmail(email, `${base}/portal/login`, `${base}/portal/forgot`).catch(() => {}));
+    // Audited like the OTP send (src/lib/auth.ts), so a notice that never went
+    // out is visible instead of silently dropped. Ids only, never the address.
+    const accountId = result.accountId;
+    after(async () => {
+      try {
+        await sendAccountExistsEmail(email, `${base}/portal/login`, `${base}/portal/forgot`);
+        await audit({ actor: "system", action: "auth.register.account_exists_notice", subject: `account:${accountId}`, outcome: "success", ip });
+      } catch (err) {
+        await audit({
+          actor: "system",
+          action: "auth.register.account_exists_notice",
+          subject: `account:${accountId}`,
+          outcome: "failure",
+          detail: `mail_send_failed: ${err instanceof Error ? err.message : String(err)}`,
+          ip,
+        });
+      }
+    });
     return NextResponse.json({ ok: true, next: "verify" });
   }
 
