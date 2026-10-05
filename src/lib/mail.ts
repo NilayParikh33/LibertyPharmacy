@@ -90,8 +90,15 @@ function demoLog(kind: string, to: string, value: string): void {
 }
 
 /**
- * Sent from a no-reply address on the pharmacy's own domain — a domain
+ * Sent from an unmonitored address on the pharmacy's own domain — a domain
  * identity is what lets DKIM align and keeps login codes out of spam.
+ *
+ * AWS advises against no-reply senders, so SES_FROM_EMAIL should be a name
+ * like portal@ rather than noreply@. That is only cosmetic until the domain
+ * has a mailbox: rxlibertypharmacy.com publishes no MX record, so replies are
+ * undeliverable either way, and the note below is what actually routes the
+ * patient. Give the domain a monitored mailbox (or forward portal@ to the
+ * pharmacy) and this note should change to invite replies.
  *
  * These messages deliberately carry NO reply-to. The domain has no mailbox,
  * so a reply goes nowhere; rather than let a patient believe they have

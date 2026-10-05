@@ -24,7 +24,7 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     description:
       "Liberty Pharmacy is your local independent pharmacy in Austin, Texas. Prescriptions, compounding, medical supplies, and personalized care.",
-    metadataBase: new URL("https://libertypharmacyatx.com"),
+    metadataBase: new URL(process.env.APP_BASE_URL ?? "https://rxlibertypharmacy.com"),
   };
 }
 

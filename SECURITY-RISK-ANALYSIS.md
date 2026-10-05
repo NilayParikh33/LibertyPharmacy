@@ -410,8 +410,8 @@ it is a required specification with no "addressable" flexibility.*
 - [ ] Refresher cadence defined (annual recommended)
 
 ### A-03 — Business Associate Agreements · **Required** · §164.308(b)(1)
-- [ ] **AWS** — executed via AWS Artifact (self-service, no cost).
-      Date: __________
+- [x] **AWS** — AWS Business Associate Addendum accepted in AWS Artifact for
+      account 429186228745; status Active. Date: **2026-08-27**
 - [ ] **DRx** — required before `DRX_ENABLED=true` (patient data in refills,
       To-Dos and medication lists; see §7D). Date: __________
 - [ ] Any other vendor touching ePHI (email, backup, IT support, billing)

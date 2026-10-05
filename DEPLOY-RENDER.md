@@ -85,7 +85,7 @@ Fill in what you need, then click **Apply**.
 |---|---|
 | `APP_BASE_URL` | The site's public URL. Use the `onrender.com` URL at first, then update to the custom domain after [step 7](#7-add-the-custom-domain). Only used to build links in outbound email — behind Render's proxy the app cannot infer its own origin, so leaving it blank can mean unreachable password-reset links. |
 | `PHI_ENCRYPTION_KEY` | Generate with `openssl rand -hex 32`. **Store it in a password manager.** Rotating it later requires re-encrypting every existing patient row. |
-| `SES_FROM_EMAIL` | The SES-verified sending address, e.g. `noreply@libertypharmacyatx.com` |
+| `SES_FROM_EMAIL` | The SES-verified sending address, e.g. `portal@rxlibertypharmacy.com` |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | An IAM user scoped to **`ses:SendEmail` only** — see the note below. |
 | `CONTACT_FORWARD_EMAIL` | The monitored inbox that receives general contact-form enquiries. |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `ADMIN_TOTP_SECRET` | Bootstraps the first admin — see [step 5](#5-bootstrap-the-admin-account). |
