@@ -193,15 +193,50 @@ bundled into the Next.js build (it can't be `require`d from a script); `pg` can.
       `info@libertypharmacyatx.com` (wrong domain). It only affects a brand-new
       database; the live value is set in Admin → Site Settings.
 
+### DRX support answers (2026-10-06/07, Phil Krupenya, support@drxpharmacytech.com)
+- **BAA:** "We don't have a BAA" for API access; the pharmacy grants access by
+  creating the key and can revoke or IP-restrict it. This does not settle
+  HIPAA: DRX already holds all of Liberty's patient data as its pharmacy
+  software vendor, so a BAA should exist in **Liberty's DRX subscription
+  contract**. The pharmacy owner must confirm that with their DRX account
+  manager (not tech support), and the pharmacy's compliance person signs off.
+- **Staging:** the key embedded in the DRX API docs works against
+  `https://staging.drxapp.com/external_api/v1` and never expires (shared demo
+  data, may be wiped). Find test patients with `GET /prescriptions`.
+- **To-Dos:** one queue for all staff; linked patient shown; no note length
+  limit; a `patient_id` DRX can't find is rejected (handled, see below).
+- **Rx numbers:** the label shows the same Rx# as the DRX prescription id;
+  `rx_number` only matters for central-site conversions.
+- **Key expiry:** the pharmacy may set a 1-year expiry with **no warning**.
+  Create the production key without expiry if possible; otherwise record the
+  date here and rotate (`POST /rotate-key`) before it.
+- **Patient notifications** on refills are a pharmacy setting in DRX. The
+  website never emails patients about refills, so there is no duplication.
+- **Transfers in:** no API. Handled as DRX To-Dos.
+- **`/prescription/0`, `/todo/0` return lists:** "fine"; guarded in `src/lib/drx.ts`.
+
+### DRX staging test (2026-10-07, all passed)
+Full flow run locally against DRX staging (fake data, patient "Linda Bravo"):
+register → refused link with another patient's Rx → link with own Rx (name
+typed in odd capitals) → medication list → refill forwarded (DRX rejected it:
+"Most recent fill still in progress") → To-Do created with that reason →
+transfer To-Do linked to the patient → contact-message To-Do → admin banner
+"DRX: connected". Found and fixed during the test:
+- a refill whose outcome arrived mid-sync waited for the next unrelated
+  trigger before getting its To-Do (now: one more pass runs straight after);
+- a To-Do whose `patient_id` DRX rejects is now resent unlinked, with a note
+  saying so, instead of retrying until it gives up;
+- contact To-Dos show the topic as the visitor saw it, not the form's value.
+The test left To-Dos #94–#101 (marked as staging tests) in DRX's shared
+staging queue.
+
 ### Pending — DRX
-- [ ] Send the support email (BAA, staging store, To-Do visibility, Rx-number
-      conversion, key expiry, patient notifications, transfers in, technical
-      contact).
-- [ ] DRX BAA signed → record it in SECURITY-RISK-ANALYSIS.md (A-03).
-- [ ] Test on DRX staging.
+- [ ] Pharmacy owner confirms a BAA in Liberty's DRX subscription contract
+      (account manager) → record it in SECURITY-RISK-ANALYSIS.md (A-03).
+- [ ] Developer ↔ pharmacy BAA, if the developer can see patient data.
 - [ ] Production key with exactly `heartbeat`, `prescription`,
       `patientprofile`, `refillrequest`, `todo`, IP-restricted to
-      **34.204.134.17**; add `DRX_API_BASE_URL` / `DRX_API_KEY` to the
-      container environment.
+      **34.204.134.17**, **no expiry** (or record the expiry date here); add
+      `DRX_API_BASE_URL` / `DRX_API_KEY` to the container environment.
 - [ ] Delete the test DRX keys that were shared in chat.
 - [ ] Only then `DRX_ENABLED=true`, and a smoke test with one consenting patient.

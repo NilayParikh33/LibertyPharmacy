@@ -60,7 +60,7 @@ async function DrxConnection() {
     >
       {beat.ok ? "DRX: connected. " : `DRX: connection failed (${beat.reason}). `}
       {sending
-        ? "Refills are sent to DRX automatically; transfers stay here."
+        ? "Refills go straight into DRX, and anything that needs a person (transfers, refills DRX did not accept, contact messages) is sent to DRX as a To-Do."
         : "Patient data exchange is switched off (DRX_ENABLED), so nothing is sent to or read from DRX."}
     </p>
   );

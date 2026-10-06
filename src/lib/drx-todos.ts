@@ -75,6 +75,15 @@ function dec(stored: string | null): string {
 
 const DELIVERY: Record<string, string> = { pickup: "Pick up", delivery: "Local delivery", mail: "Mail" };
 
+/** Contact-form topics as the visitor saw them (src/components/ContactForm.tsx). */
+const CONTACT_SUBJECT: Record<string, string> = {
+  hours: "Store hours & directions",
+  products: "Product availability",
+  services: "Services offered",
+  billing: "General billing question",
+  other: "Other question",
+};
+
 // ---------------------------------------------------------------------------
 // Building the To-Do text
 // ---------------------------------------------------------------------------
@@ -171,6 +180,34 @@ async function retryForwards(): Promise<void> {
   for (const { id } of rows) await forwardRefillToDrx(id);
 }
 
+/**
+ * DRX rejects a To-Do whose patient_id it can't find (e.g. the patient was
+ * merged or removed in DRX after the portal account was linked). Rather than
+ * retrying the same rejected request until it gives up, which would leave the
+ * work invisible to staff, send it once more without the link and say so in
+ * the note. Auth failures (401) and outages (status 0 / 5xx) are not retried
+ * here: those are not about the patient id, and the sync retries them later.
+ */
+async function createTodoLinkingIfPossible(todo: {
+  action: string;
+  note: string;
+  drxPatientId?: number;
+}): Promise<{ todoId: number; unlinked: boolean }> {
+  try {
+    return { todoId: await drxCreateTodo({ ...todo, dueAt: pharmacyNow(), tags: TAGS }), unlinked: false };
+  } catch (err) {
+    const rejected =
+      err instanceof DrxError && err.status !== 0 && err.status !== 401 && err.status < 500;
+    if (todo.drxPatientId === undefined || !rejected) throw err;
+    const body = todo.note.replace(`DRX patient #${todo.drxPatientId} (linked).`, "Not linked to a DRX patient (see above).");
+    const note =
+      `DRX did not accept patient #${todo.drxPatientId} for this To-Do, so it is not linked. ` +
+      `Find the patient by name and date of birth.\n\n${body}`;
+    const todoId = await drxCreateTodo({ action: todo.action, note, dueAt: pharmacyNow(), tags: TAGS });
+    return { todoId, unlinked: true };
+  }
+}
+
 async function createRxTodos(): Promise<void> {
   const db = await getDb();
   const rows = await db
@@ -186,10 +223,15 @@ async function createRxTodos(): Promise<void> {
 
   for (const r of rows) {
     try {
-      const todo = rxTodo(r);
-      const todoId = await drxCreateTodo({ ...todo, dueAt: pharmacyNow(), tags: TAGS });
+      const { todoId, unlinked } = await createTodoLinkingIfPossible(rxTodo(r));
       await db.prepare("UPDATE rx_requests SET drx_todo_id = ? WHERE id = ? AND drx_todo_id IS NULL").run(todoId, r.id);
-      await audit({ actor: "system:drx", action: "drx.todo.create", subject: `rx_request:${r.id}`, outcome: "success", detail: `kind=${r.kind}` });
+      await audit({
+        actor: "system:drx",
+        action: "drx.todo.create",
+        subject: `rx_request:${r.id}`,
+        outcome: "success",
+        detail: `kind=${r.kind}${unlinked ? " patient_link=rejected" : ""}`,
+      });
     } catch (err) {
       await db.prepare("UPDATE rx_requests SET drx_todo_attempts = drx_todo_attempts + 1 WHERE id = ?").run(r.id);
       const reason = err instanceof DrxError ? err.message : "unexpected error";
@@ -220,7 +262,8 @@ async function createContactTodos(): Promise<void> {
   for (const m of rows) {
     try {
       const name = `${decryptMaybePlaintext(m.first_name)} ${decryptMaybePlaintext(m.last_name)}`.trim();
-      const subject = decryptMaybePlaintext(m.subject);
+      const rawSubject = decryptMaybePlaintext(m.subject);
+      const subject = CONTACT_SUBJECT[rawSubject] ?? rawSubject;
       const phone = m.phone ? decryptMaybePlaintext(m.phone) : "";
       const note = [
         `Contact form message from the website, ${formatWhen(m.created_at)} (message #${m.id}).`,
@@ -276,25 +319,37 @@ async function pullCompletions(): Promise<void> {
 }
 
 let running: Promise<void> | null = null;
+let rerun = false;
 let lastRunAt = 0;
 
 /**
- * Runs one sync pass in the background unless one is already running or the
- * last pass was under `minIntervalMs` ago. Never throws. One pass at a time
- * per process, so two triggers can't create the same To-Do twice (the app
- * runs as a single instance; see SECURITY-RISK-ANALYSIS.md T-03).
+ * Runs one sync pass in the background unless the last pass was under
+ * `minIntervalMs` ago. Never throws. One pass at a time per process, so two
+ * triggers can't create the same To-Do twice (the app runs as a single
+ * instance; see SECURITY-RISK-ANALYSIS.md T-03).
+ *
+ * A request that arrives while a pass is running (e.g. a refill whose DRX
+ * outcome was recorded after that pass had already read the queue) gets one
+ * more pass straight afterwards, so its To-Do isn't left waiting for the
+ * next unrelated trigger. Found in the 2026-10-07 staging test.
  */
 export function syncDrxTodosSoon(minIntervalMs = 0): Promise<void> {
   if (!isDrxEnabled()) return Promise.resolve();
-  if (running) return running;
+  if (running) {
+    if (minIntervalMs === 0) rerun = true;
+    return running;
+  }
   if (Date.now() - lastRunAt < minIntervalMs) return Promise.resolve();
   lastRunAt = Date.now();
   running = (async () => {
     try {
-      await retryForwards();
-      await createRxTodos();
-      await createContactTodos();
-      await pullCompletions();
+      do {
+        rerun = false;
+        await retryForwards();
+        await createRxTodos();
+        await createContactTodos();
+        await pullCompletions();
+      } while (rerun);
     } catch (err) {
       console.error("drx: to-do sync failed", err instanceof Error ? err.message : err);
     } finally {
