@@ -413,8 +413,13 @@ it is a required specification with no "addressable" flexibility.*
 ### A-03 — Business Associate Agreements · **Required** · §164.308(b)(1)
 - [x] **AWS** — AWS Business Associate Addendum accepted in AWS Artifact for
       account 429186228745; status Active. Date: **2026-08-27**
-- [ ] **DRx** — required before `DRX_ENABLED=true` (patient data in refills,
-      To-Dos and medication lists; see §7D). Date: __________
+- [ ] **DRx** — no BAA in place. DRX support said it does not sign a
+      separate BAA for API access (2026-10-07), and none was found in the DRX
+      service agreement. **The pharmacy owner decided to proceed without one
+      (2026-10-08)** and accepts the risk: DRX holds the pharmacy's patient
+      data as its dispensing system, with or without the website, and the
+      website adds refills, medication lists and To-Dos to that flow (§7D).
+      Revisit if DRX later offers a BAA.
 - [ ] Any other vendor touching ePHI (email, backup, IT support, billing)
 - [ ] A BAA register is maintained listing each associate, execution date, and
       services covered
@@ -616,7 +621,7 @@ BAA (A-03) is executed. With just the API URL and key set, the only call is
 | Area | Control | Where |
 |---|---|---|
 | Business associate | DRX holds and receives ePHI; BAA required before enabling | A-03 |
-| Credential | API key server-side only, in Secrets Manager; never in git, image or browser bundle (checked); sent only over HTTPS; key restricted to the production egress IP | `src/lib/drx.ts` |
+| Credential | API key server-side only, in Secrets Manager; never in git, image or browser bundle (checked); sent only over HTTPS. **Not IP-restricted** (decision 2026-10-08): a leaked key works from anywhere, so it must never leave Secrets Manager and must be deleted in DRX at once if exposed | `src/lib/drx.ts` |
 | Minimum necessary (key) | Permissions limited to `heartbeat`, `prescription`, `patientprofile`, `refillrequest`, `todo`; `settings`, `partnerverify`, `patient`, `claim`, `pointofsale` never granted | `.env.example` |
 | Minimum necessary (data) | Prescription lookup keeps only patient id, name, DOB; medication list shows drug, directions, prescriber, dates, quantity, last fill (no copay, insurance, NDC); read live, never stored | `drx-link.ts`, `drx.ts` |
 | Identity / account linking | Link needs an Rx number + the exact DOB on the email-verified account + one shared name word; 5 tries per account and 20 per address per hour; identical failure messages; every prescription shown is checked to belong to the linked patient | `drx-link.ts` |
@@ -628,15 +633,16 @@ BAA (A-03) is executed. With just the API URL and key set, the only call is
 
 - **Single instance** (T-03): the To-Do sync assumes one task.
 - **Key compromise**: the `prescription` and `patientprofile` permissions can
-  read any patient's prescriptions. Mitigated by Secrets Manager, IP
-  restriction and least-privilege permissions. If exposed, delete the key in
+  read any patient's prescriptions. Mitigated by Secrets Manager and
+  least-privilege permissions. The key is deliberately **not** IP-restricted
+  (decided 2026-10-08), so this mitigation is absent; restricting it to the
+  server's Elastic IP 34.204.134.17 remains available and recommended. If exposed, delete the key in
   DRX at once and issue a new one; treat it as a possible breach (A-06).
 - **Wrong date of birth at registration**: the patient cannot link and must
   call; there is deliberately no self-service DOB change.
 
-**Before go-live:** BAA executed; the key restricted to the instance's
-Elastic IP **34.204.134.17** (production is one EC2 instance, see
-`DEPLOYMENT-AWS.md`); ownership of `patients`,
+**Before go-live:** BAA decision recorded (A-03); key created with no expiry
+(IP restriction to **34.204.134.17** recommended but declined, see above); ownership of `patients`,
 `rx_requests` and `contact_messages` confirmed for the application role (the
 app adds columns at startup); staging test passed; test keys deleted.
 

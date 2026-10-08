@@ -109,8 +109,9 @@ export default async function AdminRequestsPage({
     <div>
       <h1 className="section-title">Refill &amp; Transfer Requests</h1>
       <p className="mt-2 text-sm text-slate-600">
-        Requests patients sent from the portal. Fill or transfer each one in your dispensing system, then mark it here so
-        the patient can see its progress.
+        Requests patients sent from the portal. With DRX connected, staff work these in DRX (refills go straight into
+        DRX; anything needing a person arrives as a To-Do tagged &ldquo;Website&rdquo;), and this page is a backup view.
+        Without DRX, fill or transfer each one in the dispensing system and mark it here so the patient sees its progress.
       </p>
       <DrxConnection />
 

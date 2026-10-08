@@ -48,9 +48,55 @@ To list them again (prints names only, never values):
 sudo docker exec liberty-app env | cut -d= -f1 | sort
 ```
 
-Not yet documented: where these values are kept on the host and how the
-container is started/redeployed (only `database-url` is in Secrets Manager).
-Write that down here the next time someone redeploys.
+Where the values come from: `/usr/local/bin/liberty-deploy.sh` reads two
+Secrets Manager entries, **`liberty-pharmacy/app-secrets`** (JSON: admin,
+PHI key, SES and mail settings, `APP_BASE_URL`, …) and
+**`liberty-pharmacy/database-url`**, adds `AWS_REGION` and
+`RDS_CA_BUNDLE_PATH`, writes them to a root-only temp file that is deleted on
+exit, and starts the container with `--env-file`. New settings (e.g.
+`DRX_API_BASE_URL`, `DRX_API_KEY`, `DRX_ENABLED`) go into **app-secrets**,
+then re-run the script.
+
+### How to deploy (as done 2026-10-08)
+
+The image is built **on the server** from the GitHub source of the commit
+(910 MB RAM + 2 GB swap is enough; the build takes ~3 minutes). Everything
+below runs in Session Manager. Replace `<SHA>` with the full commit hash of
+`aws-production` and `<short>` with its first 7 characters.
+
+```bash
+cd /opt/liberty
+sudo curl -fsSL -o src-<short>.tar.gz https://github.com/NilayParikh33/LibertyPharmacy/archive/<SHA>.tar.gz
+sudo mkdir app.<short> && sudo tar -xzf src-<short>.tar.gz -C app.<short> --strip-components=1
+
+# Build first; the running site is untouched if this fails.
+sudo docker build -t liberty-app:<short> /opt/liberty/app.<short>
+
+# Switch: keep the current image as :prev, point :latest at the new one.
+sudo docker tag liberty-app:latest liberty-app:prev
+sudo docker tag liberty-app:<short> liberty-app:latest
+sudo /usr/local/bin/liberty-deploy.sh
+sudo docker ps    # liberty-app and caddy both "Up"
+```
+
+Before a deploy whose code changes the database on startup, check that the
+app role (`liberty_app`) can create tables and owns the tables being altered
+(`audit_log` is deliberately owned by `lp_admin`).
+
+**Rollback** (one command set, seconds of downtime):
+
+```bash
+sudo docker tag liberty-app:prev liberty-app:latest && sudo /usr/local/bin/liberty-deploy.sh
+```
+
+Every deployed image is also kept under its commit tag (e.g.
+`liberty-app:25cb2fd`, `liberty-app:6427209`).
+
+### Deploy history
+| Date | Commit | Notes |
+|---|---|---|
+| 2026-09-26 | `25cb2fd` | Production HIPAA guard |
+| 2026-10-08 | `6427209` | DRX integration (off), IAM-era email fixes, verify-screen wording, real domain; startup added `rx_requests` and DRX columns. Previous image kept as `:prev` / `:25cb2fd` |
 
 ---
 
@@ -175,13 +221,9 @@ bundled into the Next.js build (it can't be `require`d from a script); `pg` can.
       update the "do not reply" note in `src/lib/mail.ts`.
 
 ### Pending — deployment
-- [ ] **The live container runs code from about 2026-09-26.** Everything on
-      `aws-production` since then is not live yet. Before redeploying:
-  - [ ] Confirm the app's database role owns `patients`, `rx_requests` and
-        `contact_messages`. On startup the new code creates `rx_requests`
-        and adds columns; if the role can't, the container will not start.
-  - [ ] Keep `DRX_ENABLED` unset.
-  - [ ] Document the build/redeploy steps in §1.
+- [x] Redeployed `6427209` on 2026-10-08 (DRX off; table ownership checked
+      first; database changes applied; site and headers verified). Build and
+      rollback steps are in §1.
 - [ ] **Node 20 → 22.** The AWS SDK warns that releases after January 2027
       require Node ≥ 22. Update the `Dockerfile` base image (`node:20-alpine`).
 - [ ] **npm audit** (security suite SEC-012): `nodemailer` needs a major
@@ -231,12 +273,17 @@ The test left To-Dos #94–#101 (marked as staging tests) in DRX's shared
 staging queue.
 
 ### Pending — DRX
-- [ ] Pharmacy owner confirms a BAA in Liberty's DRX subscription contract
-      (account manager) → record it in SECURITY-RISK-ANALYSIS.md (A-03).
+- [x] Pharmacy owner decided to proceed without a DRX BAA (none found; DRX
+      does not sign one for API access), 2026-10-08. Recorded in
+      SECURITY-RISK-ANALYSIS.md (A-03).
 - [ ] Developer ↔ pharmacy BAA, if the developer can see patient data.
-- [ ] Production key with exactly `heartbeat`, `prescription`,
-      `patientprofile`, `refillrequest`, `todo`, IP-restricted to
-      **34.204.134.17**, **no expiry** (or record the expiry date here); add
-      `DRX_API_BASE_URL` / `DRX_API_KEY` to the container environment.
+- [x] Connection proven on the live server with a test key (2026-10-08):
+      `DRX_API_BASE_URL` / `DRX_API_KEY` in `app-secrets`, heartbeat HTTP 200
+      from the container, `DRX_ENABLED` unset.
+- [ ] Final production key with exactly `heartbeat`, `prescription`,
+      `patientprofile`, `refillrequest`, `todo`, **no expiry**. Not
+      IP-restricted (decision 2026-10-08; restricting to 34.204.134.17 is
+      still recommended). Replace `DRX_API_KEY` in `app-secrets` and re-run
+      the deploy script.
 - [ ] Delete the test DRX keys that were shared in chat.
 - [ ] Only then `DRX_ENABLED=true`, and a smoke test with one consenting patient.

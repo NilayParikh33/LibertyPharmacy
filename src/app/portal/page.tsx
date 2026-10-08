@@ -93,8 +93,13 @@ export default async function PortalPage({
         ...(isDrxEnabled() ? { href: "/portal/medications", cta: "View my medications" } : {}),
       },
       {
-        title: "Messages",
-        body: "Securely message our pharmacists with non-urgent questions.",
+        // The contact form already reaches staff (as a DRX To-Do once DRX is
+        // on), so there is no separate portal messaging. It screens out health
+        // details, hence the nudge to phone about medications.
+        title: "Contact the Pharmacy",
+        body: `Questions about hours, products or your account? Send us a message. For anything about your medications, call ${site.phone}.`,
+        href: "/contact",
+        cta: "Send a message",
       },
     ];
 
