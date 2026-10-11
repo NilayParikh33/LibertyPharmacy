@@ -106,6 +106,7 @@ Every deployed image is also kept under its commit tag (e.g.
 |---|---|---|
 | 2026-09-26 | `25cb2fd` | Production HIPAA guard |
 | 2026-10-08 | `6427209` | DRX integration (off), IAM-era email fixes, verify-screen wording, real domain; startup added `rx_requests` and DRX columns. Previous image kept as `:prev` / `:25cb2fd` |
+| 2026-10-11 | `2549d86` | Passkey / authenticator sign-in, `PATIENT_AUTH_MODE=device` set in app-secrets; new tables `webauthn_credentials`, `recovery_codes`, `auth_pending` created at startup (app role owns `accounts`, checked first). Previous image `:prev` = `64c3f70` |
 
 ---
 
