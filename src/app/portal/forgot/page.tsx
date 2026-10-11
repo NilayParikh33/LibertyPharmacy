@@ -28,7 +28,14 @@ export default async function ForgotPage() {
               </p>
             </div>
             <div>
-              <h2 className="text-base font-semibold text-navy-900">Forgot your password, or no codes?</h2>
+              <h2 className="text-base font-semibold text-navy-900">Forgot your password but have a passkey?</h2>
+              <p className="mt-1">
+                Choose <strong>Sign in with a passkey</strong> — no password needed. Then set a new one under{" "}
+                <strong>Sign-in &amp; security → Change password</strong>.
+              </p>
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-navy-900">No passkey and no codes?</h2>
               <p className="mt-1">
                 Call us at{" "}
                 <a href={site.phoneHref} className="font-semibold text-navy-700 underline">

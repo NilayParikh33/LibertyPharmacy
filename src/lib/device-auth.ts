@@ -12,7 +12,7 @@ import {
 } from "@simplewebauthn/server";
 import { getDb, audit } from "./db";
 import { decryptPHI, encryptPHI, generateSessionToken, hashPassword, hashSessionToken } from "./crypto";
-import { createSession, getSessionAccountId } from "./auth";
+import { SESSION_COOKIE, createSession, getSessionAccountId } from "./auth";
 
 /**
  * Device sign-in: passkeys and authenticator apps instead of emailed codes.
@@ -456,26 +456,27 @@ export async function passkeyLoginOptions(request: Request) {
   return { ok: true as const, options };
 }
 
-export async function passkeyLoginVerify(request: Request, response: AuthenticationResponseJSON, ip?: string) {
-  const p = await getPending();
-  if (!p || !p.challenge || (p.purpose !== "passkey_login" && p.purpose !== "second_factor")) return expired;
+type CredRow = { id: number; account_id: number; credential_id: string; public_key: string; counter: string | number; transports: string | null };
+
+/**
+ * Checks a passkey signature against the challenge of the step in progress.
+ * Does not update the counter — callers do that once they accept it.
+ */
+async function checkPasskeyAssertion(
+  request: Request,
+  response: AuthenticationResponseJSON,
+  challenge: string
+): Promise<{ kind: "unknown" } | { kind: "bad"; accountId: number } | { kind: "ok"; cred: CredRow; newCounter: number }> {
   const db = await getDb();
   const cred = await db
     .prepare("SELECT id, account_id, credential_id, public_key, counter, transports FROM webauthn_credentials WHERE credential_id = ?")
-    .get<{ id: number; account_id: number; credential_id: string; public_key: string; counter: string | number; transports: string | null }>(
-      response.id
-    );
-  // In the second step the passkey must belong to the account whose password was given.
-  if (!cred || (p.purpose === "second_factor" && cred.account_id !== p.accountId)) {
-    await audit({ actor: "anonymous", action: "auth.login", outcome: "failure", detail: "device:unknown_passkey", ip });
-    return failAttempt(p);
-  }
+    .get<CredRow>(response.id);
+  if (!cred) return { kind: "unknown" };
   const { rpID, origins } = relyingParty(request);
-  let verification;
   try {
-    verification = await verifyAuthenticationResponse({
+    const v = await verifyAuthenticationResponse({
       response,
-      expectedChallenge: p.challenge,
+      expectedChallenge: challenge,
       expectedOrigin: origins,
       expectedRPID: rpID,
       requireUserVerification: true,
@@ -486,23 +487,132 @@ export async function passkeyLoginVerify(request: Request, response: Authenticat
         transports: parseTransports(cred.transports),
       },
     });
+    if (v.verified) return { kind: "ok", cred, newCounter: v.authenticationInfo.newCounter };
   } catch {
-    verification = null;
+    // malformed or forged response — a failure, never a pass
   }
-  if (!verification?.verified) {
-    await audit({ actor: `account:${cred.account_id}`, action: "auth.login", outcome: "failure", detail: "device:bad_passkey", ip });
+  return { kind: "bad", accountId: cred.account_id };
+}
+
+async function markPasskeyUsed(credId: number, newCounter: number): Promise<void> {
+  const db = await getDb();
+  await db
+    .prepare("UPDATE webauthn_credentials SET counter = ?, last_used_at = ? WHERE id = ?")
+    .run(newCounter, new Date().toISOString(), credId);
+}
+
+export async function passkeyLoginVerify(request: Request, response: AuthenticationResponseJSON, ip?: string) {
+  const p = await getPending();
+  if (!p || !p.challenge || (p.purpose !== "passkey_login" && p.purpose !== "second_factor")) return expired;
+  const r = await checkPasskeyAssertion(request, response, p.challenge);
+  // In the second step the passkey must belong to the account whose password was given.
+  if (r.kind === "unknown" || (p.purpose === "second_factor" && (r.kind === "ok" ? r.cred.account_id : r.accountId) !== p.accountId)) {
+    await audit({ actor: "anonymous", action: "auth.login", outcome: "failure", detail: "device:unknown_passkey", ip });
+    return failAttempt(p);
+  }
+  if (r.kind === "bad") {
+    await audit({ actor: `account:${r.accountId}`, action: "auth.login", outcome: "failure", detail: "device:bad_passkey", ip });
     return failAttempt(p);
   }
   // A passkey-only sign-in still respects a lockout from failed passwords.
-  const acct = await db.prepare("SELECT locked_until FROM accounts WHERE id = ?").get<{ locked_until: string | null }>(cred.account_id);
+  const db = await getDb();
+  const acct = await db.prepare("SELECT locked_until FROM accounts WHERE id = ?").get<{ locked_until: string | null }>(r.cred.account_id);
   if (acct?.locked_until && new Date(acct.locked_until) > new Date()) {
-    await audit({ actor: `account:${cred.account_id}`, action: "auth.login", outcome: "failure", detail: "device:locked", ip });
+    await audit({ actor: `account:${r.cred.account_id}`, action: "auth.login", outcome: "failure", detail: "device:locked", ip });
     return { ok: false as const, error: "Too many failed attempts. Please try again in a few minutes.", status: 429 };
   }
-  await db
-    .prepare("UPDATE webauthn_credentials SET counter = ?, last_used_at = ? WHERE id = ?")
-    .run(verification.authenticationInfo.newCounter, new Date().toISOString(), cred.id);
-  await signInComplete(cred.account_id, "passkey", ip);
+  await markPasskeyUsed(r.cred.id, r.newCounter);
+  await signInComplete(r.cred.account_id, "passkey", ip);
+  return { ok: true as const };
+}
+
+// ---------------------------------------------------------------------------
+// Change password (signed in)
+// ---------------------------------------------------------------------------
+
+/**
+ * The patient confirms with a passkey or authenticator code — not the old
+ * password, which is the thing they may have forgotten. Being signed in is
+ * not enough on its own: an unattended, signed-in browser must not be able to
+ * take over the account by changing its password.
+ */
+
+const notSignedIn = { ok: false as const, error: "Please sign in again.", status: 401 };
+
+/** Passkey challenge for confirming a password change (one of the signed-in account's passkeys). */
+export async function reauthPasskeyOptions(request: Request) {
+  const accountId = await getSessionAccountId();
+  if (!accountId) return notSignedIn;
+  const db = await getDb();
+  const creds = await db
+    .prepare("SELECT credential_id, transports FROM webauthn_credentials WHERE account_id = ?")
+    .all<{ credential_id: string; transports: string | null }>(accountId);
+  if (!creds.length) return { ok: false as const, error: "You don't have a passkey on this account.", status: 409 };
+  await startPending("second_factor", accountId);
+  const p = await getPending();
+  if (!p) return notSignedIn;
+  const { rpID } = relyingParty(request);
+  const options = await generateAuthenticationOptions({
+    rpID,
+    allowCredentials: creds.map((c) => ({ id: c.credential_id, transports: parseTransports(c.transports) })),
+    userVerification: "required",
+  });
+  await db.prepare("UPDATE auth_pending SET challenge = ? WHERE id = ?").run(options.challenge, p.id);
+  return { ok: true as const, options };
+}
+
+export async function changePassword(
+  request: Request,
+  input: { password: string; totpCode?: string; passkeyResponse?: AuthenticationResponseJSON },
+  ip?: string
+) {
+  const accountId = await getSessionAccountId();
+  if (!accountId) return notSignedIn;
+  const db = await getDb();
+  const fail = (detail: string, error: string) =>
+    audit({ actor: `account:${accountId}`, action: "auth.device.password_changed", outcome: "failure", detail, ip }).then(() => ({
+      ok: false as const,
+      error,
+      status: 401,
+    }));
+
+  if (input.passkeyResponse) {
+    const p = await getPending();
+    if (!p || p.purpose !== "second_factor" || p.accountId !== accountId || !p.challenge) {
+      return { ok: false as const, error: "That took too long. Please try again.", status: 401 };
+    }
+    const r = await checkPasskeyAssertion(request, input.passkeyResponse, p.challenge);
+    if (r.kind !== "ok" || r.cred.account_id !== accountId) {
+      await failAttempt(p);
+      return fail("bad_passkey", "Your passkey couldn't be confirmed. Please try again.");
+    }
+    await markPasskeyUsed(r.cred.id, r.newCounter);
+    await clearPending();
+  } else if (input.totpCode) {
+    const acct = await db
+      .prepare("SELECT totp_secret, totp_last_step FROM accounts WHERE id = ?")
+      .get<{ totp_secret: string | null; totp_last_step: string | number | null }>(accountId);
+    const step = acct?.totp_secret ? checkTotp(decryptPHI(acct.totp_secret), input.totpCode) : null;
+    if (step === null) return fail("bad_totp", "That code didn't work. Use the current code from your Liberty Pharmacy entry.");
+    if (acct?.totp_last_step != null && step <= Number(acct.totp_last_step)) {
+      return fail("totp_reused", "That code was already used. Wait for your app to show a new code, then enter it.");
+    }
+    await db.prepare("UPDATE accounts SET totp_last_step = ? WHERE id = ?").run(step, accountId);
+  } else {
+    return { ok: false as const, error: "Confirm with your passkey or authenticator app.", status: 400 };
+  }
+
+  // Every other signed-in browser is signed out; this one stays signed in.
+  const current = (await cookies()).get(SESSION_COOKIE)?.value;
+  await db.transaction(async () => {
+    await db
+      .prepare("UPDATE accounts SET password_hash = ?, must_change_password = 0, failed_logins = 0, locked_until = NULL WHERE id = ?")
+      .run(hashPassword(input.password), accountId);
+    await db
+      .prepare("DELETE FROM sessions WHERE account_id = ? AND token_hash <> ?")
+      .run(accountId, current ? hashSessionToken(current) : "");
+  });
+  await audit({ actor: `account:${accountId}`, action: "auth.device.password_changed", outcome: "success", detail: input.passkeyResponse ? "passkey" : "totp", ip });
   return { ok: true as const };
 }
 

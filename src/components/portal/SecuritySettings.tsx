@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import ChangePassword from "./ChangePassword";
 import RecoveryCodes from "./RecoveryCodes";
 import { postJson } from "./device-client";
 
@@ -117,6 +118,8 @@ export default function SecuritySettings() {
               </p>
             )}
           </div>
+
+          <ChangePassword hasPasskey={f.passkeys > 0} hasTotp={f.totp} />
 
           <div className="card space-y-3">
             <h2 className="text-lg font-semibold text-navy-900">Recovery codes</h2>

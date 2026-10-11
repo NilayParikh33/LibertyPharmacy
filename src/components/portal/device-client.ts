@@ -62,3 +62,16 @@ export async function signInWithPasskey(): Promise<ApiResult> {
   }
   return postJson("/api/auth/device/passkey/login-verify", { response });
 }
+
+/** Changes the password, confirmed with one of the account's passkeys. */
+export async function changePasswordWithPasskey(password: string): Promise<ApiResult> {
+  const opts = await postJson("/api/auth/device/password/reauth-options");
+  if (!opts.ok) return opts;
+  let passkeyResponse;
+  try {
+    passkeyResponse = await startAuthentication({ optionsJSON: opts.data.options as Parameters<typeof startAuthentication>[0]["optionsJSON"] });
+  } catch (err) {
+    return passkeyError(err);
+  }
+  return postJson("/api/auth/device/password/change", { password, passkeyResponse });
+}

@@ -282,6 +282,10 @@ mode sends email.
   codes** are shown once.
 - **Signed in:** *Sign-in & security* (`/portal/security`) lists passkeys,
   turns the authenticator off, and makes new recovery codes.
+- **Forgot the password:** a patient with a passkey signs in with it and uses
+  *Sign-in & security → Change password*, confirming with the passkey or an
+  authenticator code (the old password isn't asked for). Other signed-in
+  devices are signed out.
 - **Lost everything:** the patient calls; staff confirm who it is and use
   **Admin → Patients → Reset sign-in**, which removes every passkey, app and
   recovery code, signs them out, and shows a one-time temporary password.

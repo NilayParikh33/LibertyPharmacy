@@ -661,6 +661,7 @@ restores the original flow without data changes.
 | Phishing resistance | Passkeys are bound to `rxlibertypharmacy.com` (from `APP_BASE_URL`); signatures from any other origin are rejected | `relyingParty()` |
 | Secrets at rest | Passkey public keys only; TOTP seed AES-256-GCM encrypted; recovery codes SHA-256; temporary passwords scrypt like any password | `db.ts` |
 | Brute force | Each sign-in step dies after 5 failures; 30 failed steps per client per 15 min; password lockout unchanged and also honoured by passkey sign-in | `device-route.ts` |
+| Password change | Signed-in only, and confirmed with a passkey (user verification) or a fresh authenticator code — a signed-in browser alone can't change it; other sessions revoked; audited `auth.device.password_changed` | `changePassword()` |
 | Account recovery | 10 single-use recovery codes; otherwise staff reset after identity check by phone — clears all factors, ends all sessions, one-time temporary password that must be changed | Admin → Patients |
 | Audit | `auth.login` (`device:passkey/totp/recovery_code`, failures), `auth.device.*` (factor added/removed, codes issued, password changed), `admin.patient.search`, `admin.patient.signin_reset` | |
 
