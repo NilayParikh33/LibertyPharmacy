@@ -5,6 +5,7 @@ import { sendAccountExistsEmail } from "@/lib/mail";
 import { getClientIp, getAppBaseUrl } from "@/lib/request";
 import { audit } from "@/lib/db";
 import { createRateLimiter } from "@/lib/rate-limit";
+import { isDeviceMode, startPending } from "@/lib/device-auth";
 
 /**
  * Patient registration.
@@ -111,6 +112,22 @@ export async function POST(request: Request) {
     },
     ip
   );
+
+  if (isDeviceMode()) {
+    // PATIENT_AUTH_MODE=device (src/lib/device-auth.ts). Without working email
+    // there is no way to tell the owner privately, so a taken email is said
+    // on screen — an accepted, temporary risk (SEC-016) instead of the
+    // indistinguishable response below.
+    if (!result.ok) {
+      return NextResponse.json(
+        { error: "An account with this email already exists. Please sign in instead.", field: "email", exists: true },
+        { status: 409 }
+      );
+    }
+    // The new account is set up with a passkey or authenticator app next.
+    await startPending("enroll", result.accountId);
+    return NextResponse.json({ ok: true, next: "setup" });
+  }
 
   if (!result.ok) {
     // Email already registered. Answer exactly as for a new signup — same

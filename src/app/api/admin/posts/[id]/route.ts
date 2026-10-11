@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentAdmin } from "@/lib/admin-auth";
 import { updatePost, deletePost } from "@/lib/posts";
-import { postSchema } from "../route";
+import { postSchema } from "@/lib/post-schema";
 import { audit } from "@/lib/db";
 import { getClientIp } from "@/lib/request";
 import { parseId } from "@/lib/ids";

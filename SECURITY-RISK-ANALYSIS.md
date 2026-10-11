@@ -125,6 +125,9 @@ Verified present in code as of this draft:
   6-digit code emailed to the registered address (10-minute expiry,
   single-use). Registration requires email verification before the account is
   activated.
+  Alternatively (`PATIENT_AUTH_MODE=device`, §7E): a passkey with user
+  verification, or the password plus an authenticator-app code; one-time
+  recovery codes; staff reset.
 - **Session management:** httpOnly, SameSite=Lax, Secure cookies; tokens
   stored only as SHA-256 hashes; 30-minute expiry; all sessions revoked on
   password reset.
@@ -645,6 +648,39 @@ BAA (A-03) is executed. With just the API URL and key set, the only call is
 (IP restriction to **34.204.134.17** recommended but declined, see above); ownership of `patients`,
 `rx_requests` and `contact_messages` confirmed for the application role (the
 app adds columns at startup); staging test passed; test keys deleted.
+
+## 7E. Passkey / authenticator sign-in — risk review (2026-10-11)
+
+Added because SES is still in its sandbox, so emailed codes don't reach
+patients. Switched on by `PATIENT_AUTH_MODE=device`; `email` (the default)
+restores the original flow without data changes.
+
+| Area | Control | Where |
+|---|---|---|
+| Authentication (§164.312(d)) | Passkey with user verification **required** (biometric/PIN), or password + TOTP (RFC 6238, ±30 s, each time step accepted once) | `src/lib/device-auth.ts` |
+| Phishing resistance | Passkeys are bound to `rxlibertypharmacy.com` (from `APP_BASE_URL`); signatures from any other origin are rejected | `relyingParty()` |
+| Secrets at rest | Passkey public keys only; TOTP seed AES-256-GCM encrypted; recovery codes SHA-256; temporary passwords scrypt like any password | `db.ts` |
+| Brute force | Each sign-in step dies after 5 failures; 30 failed steps per client per 15 min; password lockout unchanged and also honoured by passkey sign-in | `device-route.ts` |
+| Account recovery | 10 single-use recovery codes; otherwise staff reset after identity check by phone — clears all factors, ends all sessions, one-time temporary password that must be changed | Admin → Patients |
+| Audit | `auth.login` (`device:passkey/totp/recovery_code`, failures), `auth.device.*` (factor added/removed, codes issued, password changed), `admin.patient.search`, `admin.patient.signin_reset` | |
+
+**SEC-016 — accepted risks while in device mode** (owner decision 2026-10-11,
+until SES production access):
+
+- **Registration reveals existing emails.** Without email there is no private
+  way to tell the owner, so "An account with this email already exists" is
+  shown (SEC-002 in email mode). Mitigated by the 5-per-10-minutes
+  registration limit.
+- **First factor on trust.** An account with no passkey or app — newly
+  registered, or just reset — adds its first one after the password alone,
+  and email ownership is never verified. Someone who registers with another
+  person's email gains nothing (no records until linked by Rx number + DOB).
+- **Staff reset is social-engineerable.** Staff must confirm name, date of
+  birth and phone on file before resetting; every reset is audited with the
+  staff member's name.
+
+**When SES production access is granted:** set `PATIENT_AUTH_MODE=email` (or
+keep device mode and later add email as a recovery channel).
 
 ## 7B. Backup Restore Test — 2026-08-27
 

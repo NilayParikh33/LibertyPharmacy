@@ -430,6 +430,45 @@ async function init(): Promise<AppDb> {
     ALTER TABLE rx_requests ADD COLUMN IF NOT EXISTS drx_todo_attempts INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE contact_messages ADD COLUMN IF NOT EXISTS drx_todo_id INTEGER;
     ALTER TABLE contact_messages ADD COLUMN IF NOT EXISTS drx_todo_attempts INTEGER NOT NULL DEFAULT 0;
+
+    -- Device sign-in (PATIENT_AUTH_MODE=device, src/lib/device-auth.ts):
+    -- passkeys and authenticator apps instead of emailed codes.
+    ALTER TABLE accounts ADD COLUMN IF NOT EXISTS totp_secret TEXT;            -- [enc] authenticator seed
+    ALTER TABLE accounts ADD COLUMN IF NOT EXISTS must_change_password INTEGER NOT NULL DEFAULT 0; -- after an admin reset
+    ALTER TABLE accounts ADD COLUMN IF NOT EXISTS totp_last_step BIGINT;        -- last accepted time step (replay guard)
+    CREATE TABLE IF NOT EXISTS webauthn_credentials (
+      id            SERIAL PRIMARY KEY,
+      account_id    INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+      credential_id TEXT NOT NULL UNIQUE,      -- base64url, as the browser reports it
+      public_key    TEXT NOT NULL,             -- base64url COSE public key (not secret)
+      counter       BIGINT NOT NULL DEFAULT 0, -- signature counter, replay check
+      transports    TEXT,                      -- JSON array of hints
+      backed_up     INTEGER NOT NULL DEFAULT 0, -- synced passkey (iCloud/Google) vs single device
+      created_at    TEXT NOT NULL DEFAULT (${NOW_ISO}),
+      last_used_at  TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_webauthn_account ON webauthn_credentials(account_id);
+    CREATE TABLE IF NOT EXISTS recovery_codes (
+      id          SERIAL PRIMARY KEY,
+      account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+      code_hash   TEXT NOT NULL,               -- SHA-256; the code itself is shown once
+      used_at     TEXT,
+      created_at  TEXT NOT NULL DEFAULT (${NOW_ISO})
+    );
+    CREATE INDEX IF NOT EXISTS idx_recovery_account ON recovery_codes(account_id);
+    -- Short-lived state between the steps of a device sign-in, bound to the
+    -- browser by the lp_auth cookie (only its SHA-256 is stored).
+    CREATE TABLE IF NOT EXISTS auth_pending (
+      id          SERIAL PRIMARY KEY,
+      token_hash  TEXT NOT NULL UNIQUE,
+      account_id  INTEGER REFERENCES accounts(id) ON DELETE CASCADE, -- NULL for a passkey sign-in in progress
+      purpose     TEXT NOT NULL CHECK (purpose IN ('enroll','second_factor','passkey_login')),
+      challenge   TEXT,                        -- current WebAuthn challenge
+      totp_secret TEXT,                        -- [enc] authenticator seed being set up, not yet confirmed
+      attempts    INTEGER NOT NULL DEFAULT 0,
+      expires_at  TEXT NOT NULL,
+      created_at  TEXT NOT NULL DEFAULT (${NOW_ISO})
+    );
   `);
 
   // audit_log's index, guarded. In production the table is owned by a

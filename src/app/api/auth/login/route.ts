@@ -4,6 +4,7 @@ import { loginPatient, startMfaChallenge } from "@/lib/auth";
 import { getClientIp } from "@/lib/request";
 import { audit } from "@/lib/db";
 import { createRateLimiter } from "@/lib/rate-limit";
+import { afterPasswordAccepted, isDeviceMode } from "@/lib/device-auth";
 
 const loginSchema = z.object({
   email: z.string().trim().email().max(254),
@@ -43,6 +44,12 @@ export async function POST(request: Request) {
   }
   // Deliberately not reset on success: an attacker holding one valid login
   // (even their own) could otherwise clear the counter between spray batches.
+
+  // PATIENT_AUTH_MODE=device: the second step is a passkey, authenticator
+  // app or recovery code instead of an emailed code (src/lib/device-auth.ts).
+  if (isDeviceMode()) {
+    return NextResponse.json({ ok: true, ...(await afterPasswordAccepted(result.accountId)) });
+  }
 
   // Password alone never grants a session. Unverified accounts must first
   // activate via the emailed code; verified accounts get a login MFA code.

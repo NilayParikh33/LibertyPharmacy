@@ -36,6 +36,15 @@ DATABASE_URL    MAIL_REPLY_TO         NODE_ENV           PHI_ENCRYPTION_KEY
 PORT            RDS_CA_BUNDLE_PATH    SES_FROM_EMAIL
 ```
 
+Since 2026-10-11 also `DRX_API_BASE_URL  DRX_API_KEY  DRX_ENABLED  PATIENT_AUTH_MODE`.
+`PATIENT_AUTH_MODE=device` = patients sign in with passkeys / authenticator
+apps instead of emailed codes (SECURITY-RISK-ANALYSIS.md §7E). Set it back to
+`email` once SES production access is granted.
+
+**Patient locked out (device mode):** they call; staff confirm name, date of
+birth and phone on file, then Admin → Patients → search the email → **Reset
+sign-in**, and read the temporary password (shown once) to the patient.
+
 Non-secret values as of 2026-10-05: `SES_FROM_EMAIL=noreply@rxlibertypharmacy.com`,
 `AWS_REGION=us-east-1`, `APP_BASE_URL=https://rxlibertypharmacy.com`,
 `NODE_ENV=production`. No `DEMO_*` or `GMAIL_*` variables are set (correct
@@ -231,6 +240,8 @@ bundled into the Next.js build (it can't be `require`d from a script); `pg` can.
 - [ ] **Test accounts in production.** Accounts created while debugging on
       2026-10-05 (`kushuvc38@gmail.com`, `kushuvc@gmail.com`) should be
       removed once testing is done.
+- [ ] **Back to emailed codes.** After SES production access, set
+      `PATIENT_AUTH_MODE=email` in app-secrets and redeploy (or keep passkeys).
 - [ ] **Seed data.** `src/lib/db.ts` seeds the contact email as
       `info@libertypharmacyatx.com` (wrong domain). It only affects a brand-new
       database; the live value is set in Admin → Site Settings.

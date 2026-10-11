@@ -21,11 +21,13 @@ const sectionCls = "border-t border-slate-200 pt-6";
 export default function RegisterPage() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [accountExists, setAccountExists] = useState(false);
   const [busy, setBusy] = useState(false);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
+    setAccountExists(false);
 
     const f = new FormData(e.currentTarget);
     const v = (k: string) => (f.get(k) as string | null)?.trim() ?? "";
@@ -73,11 +75,13 @@ export default function RegisterPage() {
       const data = await res.json();
       if (!res.ok) {
         setError(data.error ?? "Unable to create your account. Please review the form.");
+        setAccountExists(data.exists === true);
         window.scrollTo({ top: 0, behavior: "smooth" });
         return;
       }
       stashDemoOtp(data.demoCode);
-      router.push("/portal/verify?new=1");
+      // "setup": passkey / authenticator sign-in (PATIENT_AUTH_MODE=device).
+      router.push(data.next === "setup" ? "/portal/setup-security?new=1" : "/portal/verify?new=1");
       router.refresh();
     } catch {
       setError("Something went wrong. Please try again.");
@@ -109,6 +113,14 @@ export default function RegisterPage() {
             {error && (
               <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
                 {error}
+                {accountExists && (
+                  <>
+                    {" "}
+                    <Link href="/portal/login" className="font-semibold underline">
+                      Sign in
+                    </Link>
+                  </>
+                )}
               </p>
             )}
 

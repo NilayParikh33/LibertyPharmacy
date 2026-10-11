@@ -265,6 +265,33 @@ How a challenge works:
 Every step of this (code sent, code verified, code rejected, too many
 attempts) is written to `audit_log`, same as regular logins.
 
+### 6.3a Passkeys and authenticator apps (`PATIENT_AUTH_MODE=device`)
+
+While Amazon SES is still in its sandbox the emailed codes above don't reach
+patients, so the portal can run in **device** mode instead
+(`src/lib/device-auth.ts`, routes under `/api/auth/device/`). Nothing in this
+mode sends email.
+
+- **Sign in with a passkey** (Face ID, Touch ID, Windows Hello, a phone) — no
+  password needed; the device itself is two factors.
+- **Or email + password**, then `/portal/verify-device`: a 6-digit code from an
+  authenticator app, one of the account's passkeys, or a recovery code.
+- **New accounts** (and accounts with nothing set up yet) go to
+  `/portal/setup-security` after the password: create a passkey or scan a QR
+  code into an authenticator app. The first time, 10 one-time **recovery
+  codes** are shown once.
+- **Signed in:** *Sign-in & security* (`/portal/security`) lists passkeys,
+  turns the authenticator off, and makes new recovery codes.
+- **Lost everything:** the patient calls; staff confirm who it is and use
+  **Admin → Patients → Reset sign-in**, which removes every passkey, app and
+  recovery code, signs them out, and shows a one-time temporary password.
+  Signing in with it asks for a new password, then a new passkey or app.
+
+Stored: `webauthn_credentials` (public keys only), `accounts.totp_secret`
+(encrypted), `recovery_codes` (SHA-256), `auth_pending` (the step in
+progress, bound to the browser by the `lp_auth` cookie). Passkeys are tied to
+the domain in `APP_BASE_URL`. Switching back to `email` needs no data change.
+
 ### 6.4 Staying signed in (sessions & cookies)
 
 A "session" is just: *a random secret is created, the browser stores it in a

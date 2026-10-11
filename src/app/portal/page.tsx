@@ -10,6 +10,7 @@ import { getDrxPatientId, takeDrxReadyNotice } from "@/lib/drx-link";
 import { syncDrxTodosSoon } from "@/lib/drx-todos";
 import { after } from "next/server";
 import DrxLinkForm from "@/components/portal/DrxLinkForm";
+import { isDeviceMode } from "@/lib/device-auth";
 
 export const metadata: Metadata = {
   title: "Patient Portal",
@@ -172,7 +173,14 @@ export default async function PortalPage({
                       : "mail"}
                 </p>
               </div>
-              <LogoutButton />
+              <div className="flex flex-wrap items-center gap-3">
+                {isDeviceMode() && (
+                  <Link href="/portal/security" className="btn-outline btn-sm">
+                    Sign-in &amp; security
+                  </Link>
+                )}
+                <LogoutButton />
+              </div>
             </div>
 
             <div className="grid gap-6 sm:grid-cols-2">
