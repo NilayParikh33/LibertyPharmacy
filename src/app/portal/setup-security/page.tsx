@@ -160,6 +160,10 @@ function SetupSecurity() {
             <li>Add an account and scan this QR code.</li>
             <li>Enter the 6-digit code the app shows.</li>
           </ol>
+          <p className="mt-2 text-xs leading-5 text-slate-500">
+            Already have a Liberty Pharmacy entry in your app from before? Delete it first, so you don&apos;t use the old
+            codes.
+          </p>
         </div>
         {/* data: URL from the server — allowed by the CSP's img-src. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}

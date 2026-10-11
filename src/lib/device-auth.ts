@@ -149,14 +149,14 @@ export async function clearPending(): Promise<void> {
 }
 
 /** Counts a failed attempt; the step is destroyed after MAX_ATTEMPTS. */
-async function failAttempt(p: Pending): Promise<{ ok: false; error: string; status: number }> {
+async function failAttempt(p: Pending, message = "That didn't work. Please try again."): Promise<{ ok: false; error: string; status: number }> {
   const db = await getDb();
   if (p.attempts + 1 >= MAX_ATTEMPTS) {
     await clearPending();
     return { ok: false, error: "Too many attempts. Please sign in again.", status: 429 };
   }
   await db.prepare("UPDATE auth_pending SET attempts = attempts + 1 WHERE id = ?").run(p.id);
-  return { ok: false, error: "That didn't work. Please try again.", status: 401 };
+  return { ok: false, error: message, status: 401 };
 }
 
 const expired = { ok: false as const, error: "Your sign-in has expired. Please start again.", status: 401 };
@@ -338,8 +338,12 @@ export async function totpSetup() {
   if (await mustChangePassword(ctx.accountId)) return changePasswordFirst;
   const db = await getDb();
   const acct = await db.prepare("SELECT email FROM accounts WHERE id = ?").get<{ email: string }>(ctx.accountId);
-  const secret = generateSecret();
-  await db.prepare("UPDATE auth_pending SET totp_secret = ? WHERE id = ?").run(encryptPHI(secret), ctx.pending.id);
+  // Same key for the whole setup step: pressing Back or the button again must
+  // not replace a key the patient has already scanned.
+  const secret = ctx.pending.totpSecret ? decryptPHI(ctx.pending.totpSecret) : generateSecret();
+  if (!ctx.pending.totpSecret) {
+    await db.prepare("UPDATE auth_pending SET totp_secret = ? WHERE id = ?").run(encryptPHI(secret), ctx.pending.id);
+  }
   const uri = generateURI({ issuer: RP_NAME, label: acct?.email ?? "Patient portal", secret });
   const qr = await QRCode.toDataURL(uri, { margin: 1, width: 220 });
   return { ok: true as const, secret, qr };
@@ -353,7 +357,10 @@ export async function totpConfirm(code: string, ip?: string) {
   const step = checkTotp(secret, code);
   if (step === null) {
     await audit({ actor: `account:${ctx.accountId}`, action: "auth.device.totp_added", outcome: "failure", ip });
-    return failAttempt(ctx.pending);
+    return failAttempt(
+      ctx.pending,
+      "That code doesn't match. If Liberty Pharmacy is already in your app from an earlier setup, delete that entry, scan this QR code again and use the new code."
+    );
   }
   const db = await getDb();
   await db
@@ -395,9 +402,13 @@ export async function verifyTotpLogin(code: string, ip?: string) {
     .get<{ totp_secret: string | null; totp_last_step: string | number | null }>(p.accountId);
   const step = acct?.totp_secret ? checkTotp(decryptPHI(acct.totp_secret), code) : null;
   // A code is accepted once: a step at or before the last one used is a replay.
-  if (step === null || (acct?.totp_last_step != null && step <= Number(acct.totp_last_step))) {
+  if (step === null) {
     await audit({ actor: `account:${p.accountId}`, action: "auth.login", outcome: "failure", detail: "device:bad_totp", ip });
-    return failAttempt(p);
+    return failAttempt(p, "That code didn't work. Check you're using the Liberty Pharmacy entry in your app and try the current code.");
+  }
+  if (acct?.totp_last_step != null && step <= Number(acct.totp_last_step)) {
+    await audit({ actor: `account:${p.accountId}`, action: "auth.login", outcome: "failure", detail: "device:totp_reused", ip });
+    return failAttempt(p, "That code was already used. Wait for your app to show a new code, then enter it.");
   }
   await db.prepare("UPDATE accounts SET totp_last_step = ? WHERE id = ?").run(step, p.accountId);
   await signInComplete(p.accountId, "totp", ip);
