@@ -13,7 +13,7 @@ export default function DrxLinkForm({
   phone,
   phoneHref,
   title = "Connect your pharmacy record",
-  intro = "To show your medications, we need to match this account to your record at the pharmacy. Enter the Rx number from any Liberty Pharmacy prescription label. We'll check it against the date of birth on your account. You only need to do this once.",
+  intro = "To show your medications, we need to match this account to your record at the pharmacy. Enter the Rx number from any Liberty Pharmacy prescription label, with your date of birth and name exactly as the pharmacy has them. You only need to do this once.",
 }: {
   phone: string;
   phoneHref: string;
@@ -22,6 +22,8 @@ export default function DrxLinkForm({
 }) {
   const router = useRouter();
   const [rx, setRx] = useState("");
+  const [dob, setDob] = useState("");
+  const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -33,12 +35,20 @@ export default function DrxLinkForm({
       setError("Enter the Rx number exactly as printed on your label (digits only).");
       return;
     }
+    if (!dob) {
+      setError("Enter your date of birth.");
+      return;
+    }
+    if (name.trim().length < 2) {
+      setError("Enter your name as it appears on your label.");
+      return;
+    }
     setBusy(true);
     try {
       const res = await fetch("/api/portal/drx-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rxNumber }),
+        body: JSON.stringify({ rxNumber, dateOfBirth: dob, name: name.trim() }),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (res.status === 401) {
@@ -81,6 +91,33 @@ export default function DrxLinkForm({
           inputMode="numeric"
           maxLength={10}
           autoComplete="off"
+          className="input-field"
+        />
+      </div>
+      <div>
+        <label htmlFor="link-dob" className="mb-1.5 block text-sm font-medium text-slate-700">
+          Date of birth
+        </label>
+        <input
+          id="link-dob"
+          type="date"
+          value={dob}
+          onChange={(e) => setDob(e.target.value)}
+          autoComplete="bday"
+          className="input-field"
+        />
+      </div>
+      <div>
+        <label htmlFor="link-name" className="mb-1.5 block text-sm font-medium text-slate-700">
+          Name on your label
+        </label>
+        <input
+          id="link-name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          autoComplete="name"
+          maxLength={200}
+          placeholder="First and last name"
           className="input-field"
         />
       </div>

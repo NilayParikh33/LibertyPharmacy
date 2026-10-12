@@ -1,5 +1,5 @@
 import { getDb, audit } from "./db";
-import { decryptPHI } from "./crypto";
+import { decryptPHI, encryptPHI } from "./crypto";
 import { DrxError, drxPatientProfile, drxPrescriptionOwner, isDrxEnabled } from "./drx";
 import { sendRecordConnectedEmail } from "./mail";
 
@@ -48,11 +48,15 @@ export function namesOverlap(oursFirst: string, oursLast: string, theirsFirst: s
 }
 
 /** DRX sends MM/DD/YYYY or YYYY-MM-DD depending on the endpoint; ours is YYYY-MM-DD. */
+/** DRX dates (MM/DD/YYYY or ISO) as YYYY-MM-DD, the format stored here. */
+function isoDate(theirs: string): string {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(theirs.trim());
+  return m ? `${m[3]}-${m[1]}-${m[2]}` : theirs.trim().slice(0, 10);
+}
+
 export function sameDate(ours: string, theirs: string | null | undefined): boolean {
   if (!theirs) return false;
-  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(theirs.trim());
-  const normalized = m ? `${m[3]}-${m[1]}-${m[2]}` : theirs.trim().slice(0, 10);
-  return normalized === ours;
+  return isoDate(theirs) === ours;
 }
 
 function safeDecrypt(stored: string | null): string | null {
@@ -76,7 +80,17 @@ export async function getDrxPatientId(patientId: number): Promise<number | null>
  * Tries to link `patientId` using one of their Rx numbers. Never throws.
  * `actor` is who asked (for the audit trail): the patient, or system:drx.
  */
-export async function linkDrxPatient(patientId: number, rxNumber: string, actor: string): Promise<LinkResult> {
+export async function linkDrxPatient(
+  patientId: number,
+  rxNumber: string,
+  actor: string,
+  // From the link form: the patient's date of birth and name as on their
+  // label. When given, these are checked instead of what was typed at
+  // registration (which was entered by the same person, so it is no stronger
+  // a check), and on a match the account is corrected to DRX's values — so a
+  // typo at registration no longer blocks linking for good.
+  supplied?: { dateOfBirth: string; name: string }
+): Promise<LinkResult> {
   if (!isDrxEnabled()) return "disabled";
   const db = await getDb();
   const row = await db
@@ -85,10 +99,10 @@ export async function linkDrxPatient(patientId: number, rxNumber: string, actor:
   if (!row) return "error";
   if (row.drx_patient_id !== null) return "already_linked";
 
-  const firstName = safeDecrypt(row.first_name);
-  const lastName = safeDecrypt(row.last_name);
-  const dateOfBirth = safeDecrypt(row.date_of_birth);
-  if (!firstName || !lastName || !dateOfBirth || !/^\d{1,10}$/.test(rxNumber.trim()) || Number(rxNumber) <= 0) {
+  const firstName = supplied ? supplied.name : safeDecrypt(row.first_name);
+  const lastName = supplied ? "" : safeDecrypt(row.last_name);
+  const dateOfBirth = supplied ? supplied.dateOfBirth : safeDecrypt(row.date_of_birth);
+  if (!firstName || lastName === null || (!supplied && !lastName) || !dateOfBirth || !/^\d{1,10}$/.test(rxNumber.trim()) || Number(rxNumber) <= 0) {
     await auditLink(actor, patientId, "no_match");
     return "no_match";
   }
@@ -107,6 +121,17 @@ export async function linkDrxPatient(patientId: number, rxNumber: string, actor:
     const { changes } = await db
       .prepare("UPDATE patients SET drx_patient_id = ? WHERE patient_id = ? AND drx_patient_id IS NULL")
       .run(match.drxPatientId, patientId);
+    if (changes > 0 && supplied) {
+      // Name and date of birth now follow the pharmacy's record.
+      await db
+        .prepare("UPDATE patients SET first_name = ?, last_name = ?, date_of_birth = ? WHERE patient_id = ?")
+        .run(
+          encryptPHI(owner.firstName || firstName),
+          encryptPHI(owner.lastName || safeDecrypt(row.last_name) || ""),
+          encryptPHI(owner.dateOfBirth ? isoDate(owner.dateOfBirth) : dateOfBirth),
+          patientId
+        );
+    }
     if (changes > 0) await onLinked(patientId, !actor.startsWith("account:"));
     await auditLink(actor, patientId, "linked");
     return "linked";
