@@ -109,6 +109,7 @@ Every deployed image is also kept under its commit tag (e.g.
 | 2026-10-11 | `2549d86` | Passkey / authenticator sign-in, `PATIENT_AUTH_MODE=device` set in app-secrets; new tables `webauthn_credentials`, `recovery_codes`, `auth_pending` created at startup (app role owns `accounts`, checked first). Previous image `:prev` = `64c3f70` |
 | 2026-10-11 | `fe521e5` | Authenticator setup keeps one key per setup; clearer mismatched / reused code messages. `:prev` = `2549d86` |
 | 2026-10-11 | `6299426` | Change password on Sign-in & security (confirmed with passkey or authenticator). `:prev` = `fe521e5` |
+| 2026-10-12 | `5cf04b7` | Final DRX key in use; link form asks Rx + date of birth + name and corrects the account to DRX's values on a match. `:prev` = `6299426` |
 
 ---
 
