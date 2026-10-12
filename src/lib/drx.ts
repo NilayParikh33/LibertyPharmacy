@@ -246,6 +246,8 @@ export interface DrxMedication {
   lastFillStatus: string | null;
   daysSupply: number | null;
   inactive: boolean;
+  /** Every fill, newest first: DRX's own status words ("Waiting Bin", "Sold", "Hold", …). */
+  fills: { fillNumber: number | null; fillDate: string | null; status: string | null }[];
 }
 
 interface DrxProfileFill {
@@ -312,6 +314,11 @@ export async function drxPatientProfile(
       lastFillStatus: last?.status ?? null,
       daysSupply: last?.days_supply ?? null,
       inactive: Boolean(p.inactivated),
+      fills: fills.map((f) => ({
+        fillNumber: typeof f.fill_number === "number" ? f.fill_number : null,
+        fillDate: f.fill_date ?? null,
+        status: f.status ?? null,
+      })),
     };
   });
   return { dateOfBirth, medications };

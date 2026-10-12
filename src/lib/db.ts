@@ -430,6 +430,10 @@ async function init(): Promise<AppDb> {
     ALTER TABLE rx_requests ADD COLUMN IF NOT EXISTS drx_todo_attempts INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE contact_messages ADD COLUMN IF NOT EXISTS drx_todo_id INTEGER;
     ALTER TABLE contact_messages ADD COLUMN IF NOT EXISTS drx_todo_attempts INTEGER NOT NULL DEFAULT 0;
+    -- What DRX says happened to each Rx of a forwarded refill (src/lib/drx-status.ts):
+    -- [enc] JSON [{rx, status, fillDate}] with DRX's own status words, and when it was read.
+    ALTER TABLE rx_requests ADD COLUMN IF NOT EXISTS drx_fill TEXT;
+    ALTER TABLE rx_requests ADD COLUMN IF NOT EXISTS drx_fill_at TEXT;
 
     -- Device sign-in (PATIENT_AUTH_MODE=device, src/lib/device-auth.ts):
     -- passkeys and authenticator apps instead of emailed codes.

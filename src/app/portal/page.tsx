@@ -8,6 +8,7 @@ import { listPatientRequests, type RxStatus } from "@/lib/rx-requests";
 import { drxConfig, isDrxEnabled } from "@/lib/drx";
 import { getDrxPatientId, takeDrxReadyNotice } from "@/lib/drx-link";
 import { syncDrxTodosSoon } from "@/lib/drx-todos";
+import { refreshRequestStatuses } from "@/lib/drx-status";
 import { after } from "next/server";
 import DrxLinkForm from "@/components/portal/DrxLinkForm";
 import { isDeviceMode } from "@/lib/device-auth";
@@ -61,6 +62,8 @@ export default async function PortalPage({
   const site = await getSiteSettings();
 
   if (profile) {
+    // DRX → portal: pick up Waiting Bin / Sold / cancelled etc. before listing.
+    if (isDrxEnabled()) await refreshRequestStatuses(profile.patientId);
     const requests = await listPatientRequests(profile.patientId);
     // DRX connection state, only meaningful once DRX is switched on.
     const drxOn = isDrxEnabled();
@@ -238,9 +241,25 @@ export default async function PortalPage({
                           </p>
                         )}
                       </div>
-                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusLabel[r.status].cls}`}>
-                        {statusLabel[r.status].text}
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                          r.ready ? "bg-green-50 text-green-800" : statusLabel[r.status].cls
+                        }`}
+                      >
+                        {r.ready ? "Ready" : statusLabel[r.status].text}
                       </span>
+                      {r.rxStatus.length > 0 && (
+                        <ul className="w-full space-y-1 border-t border-slate-100 pt-2 text-xs text-slate-600">
+                          {r.rxStatus.map((x) => (
+                            <li key={x.rx}>
+                              <span className="font-medium text-slate-700">Rx {x.rx}:</span> {x.label}
+                              {x.drx && x.drx !== x.label && (
+                                <span className="text-slate-400"> (pharmacy status: {x.drx})</span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </li>
                   ))}
                 </ul>

@@ -2,6 +2,7 @@ import { getDb, audit } from "./db";
 import { encryptPHI, decryptPHI } from "./crypto";
 import { readDrxResult, type DrxRefillStatus } from "./drx-refills";
 import type { DrxRefillOutcome } from "./drx";
+import { friendlyFillStatus, isReady, readFillStates } from "./drx-status";
 
 /**
  * Refill and prescription-transfer requests.
@@ -127,6 +128,10 @@ export interface PatientRequestView {
   summary: string;
   /** Earliest pickup estimate DRX gave, if any. Show it as an estimate only. */
   estimatedPickup: string | null;
+  /** Per Rx, what DRX says (refills only). `drx` is DRX's own status word. */
+  rxStatus: { rx: string; label: string; drx: string | null }[];
+  /** At least one Rx is in DRX's Waiting Bin and the request is still open. */
+  ready: boolean;
 }
 
 /** A patient's own recent requests, newest first. */
@@ -134,19 +139,42 @@ export async function listPatientRequests(patientId: number, limit = 10): Promis
   const db = await getDb();
   const rows = await db
     .prepare(
-      `SELECT id, kind, status, details, drx_result, created_at FROM rx_requests
+      `SELECT id, kind, status, details, drx_status, drx_result, drx_fill, created_at FROM rx_requests
        WHERE patient_id = ? ORDER BY created_at DESC, id DESC LIMIT ?`
     )
-    .all<{ id: number; kind: RxKind; status: RxStatus; details: string; drx_result: string | null; created_at: string }>(
-      patientId,
-      limit
-    );
-  return rows.map((r) => ({
+    .all<{
+      id: number;
+      kind: RxKind;
+      status: RxStatus;
+      details: string;
+      drx_status: string | null;
+      drx_result: string | null;
+      drx_fill: string | null;
+      created_at: string;
+    }>(patientId, limit);
+  return rows.map((r) => {
+    const details = parseDetails(r.kind, r.details);
+    const open = r.status === "new" || r.status === "in_progress";
+    const fills = readFillStates(r.drx_fill);
+    const outcomes = readDrxResult(r.drx_result);
+    const refill = r.kind === "refill" && details && "items" in details ? details : null;
+    const rxStatus = !refill || r.drx_status === null
+      ? []
+      : refill.items.map((i) => {
+          const key = String(Number(i.rxNumber) || i.rxNumber);
+          const fill = fills.find((f) => f.rx === key);
+          if (fill) return { rx: i.rxNumber, label: friendlyFillStatus(fill.status, refill.deliveryMethod), drx: fill.status };
+          const o = outcomes.find((x) => x.rxNumber === key || x.rxNumber === i.rxNumber);
+          if (o?.ok) return { rx: i.rxNumber, label: "Accepted, waiting to be filled", drx: null };
+          if (o) return { rx: i.rxNumber, label: `Not accepted: ${o.message}. We'll contact you.`, drx: null };
+          return { rx: i.rxNumber, label: "We'll review this and contact you", drx: null };
+        });
+    return {
     id: r.id,
     kind: r.kind,
     status: r.status,
     createdAt: r.created_at,
-    summary: summarize(r.kind, parseDetails(r.kind, r.details)),
+    summary: summarize(r.kind, details),
     // Only while the request is still moving: once staff close it the
     // estimate is stale.
     estimatedPickup:
@@ -156,7 +184,10 @@ export async function listPatientRequests(patientId: number, limit = 10): Promis
             .filter((t): t is string => Boolean(t))
             .sort()[0] ?? null
         : null,
-  }));
+    rxStatus,
+    ready: open && fills.some((f) => isReady(f.status)),
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------

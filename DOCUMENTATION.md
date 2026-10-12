@@ -296,6 +296,21 @@ Stored: `webauthn_credentials` (public keys only), `accounts.totp_secret`
 progress, bound to the browser by the `lp_auth` cookie). Passkeys are tied to
 the domain in `APP_BASE_URL`. Switching back to `email` needs no data change.
 
+### 6.3b Refill status from DRX (`src/lib/drx-status.ts`)
+
+DRX has no webhooks, so when a patient opens the portal their open refill
+requests are checked against their prescriptions in DRX (`GET /profile`, at
+most once every 2 minutes per patient). For each Rx DRX accepted, the newest
+fill on or after the request date is shown with DRX's own status word
+("Waiting Bin", "Sold", "Hold", cancelled…) and a plain label (Ready for
+pickup, Picked up, On hold, Cancelled by the pharmacy). An Rx deleted or
+inactivated in DRX is shown as such. Rx numbers DRX rejected show DRX's reason
+("Not accepted: Rx is expired. We'll contact you.") and stay with staff as a
+To-Do. The request becomes Completed when every Rx is picked up / sent (or its
+To-Do is ticked done), Cancelled when every Rx was cancelled or deleted.
+Limit: a second refill of the same Rx on the same day would match the first
+day's fill (DRX normally rejects that as too soon).
+
 ### 6.4 Staying signed in (sessions & cookies)
 
 A "session" is just: *a random secret is created, the browser stores it in a
