@@ -23,8 +23,8 @@ const schema = z.object({
     .trim()
     .regex(/^\d{1,10}$/, "Enter the Rx number exactly as printed on your label (digits only)")
     .refine((v) => Number(v) > 0, "Enter the Rx number exactly as printed on your label (digits only)"),
-  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Enter your date of birth"),
-  name: z.string().trim().min(2, "Enter your name as it appears on your label").max(200),
+  dateOfBirth: z.string({ required_error: "Enter your date of birth" }).regex(/^\d{4}-\d{2}-\d{2}$/, "Enter your date of birth"),
+  name: z.string({ required_error: "Enter your name as it appears on your label" }).trim().min(2, "Enter your name as it appears on your label").max(200),
 });
 
 const ipLimiter = createRateLimiter({ limit: 20, windowMs: 60 * 60 * 1000 });
