@@ -294,10 +294,12 @@ staging queue.
 - [x] Connection proven on the live server with a test key (2026-10-08):
       `DRX_API_BASE_URL` / `DRX_API_KEY` in `app-secrets`, heartbeat HTTP 200
       from the container, `DRX_ENABLED` unset.
-- [ ] Final production key with exactly `heartbeat`, `prescription`,
+- [x] Final production key (2026-10-12) with exactly `heartbeat`, `prescription`,
       `patientprofile`, `refillrequest`, `todo`, **no expiry**. Not
       IP-restricted (decision 2026-10-08; restricting to 34.204.134.17 is
-      still recommended). Replace `DRX_API_KEY` in `app-secrets` and re-run
-      the deploy script.
-- [ ] Delete the test DRX keys that were shared in chat.
-- [ ] Only then `DRX_ENABLED=true`, and a smoke test with one consenting patient.
+      still recommended). In `app-secrets`; never shared in chat. App
+      restarted, heartbeat HTTP 200, `DRX_ENABLED=true`. `prescription` is
+      billable in DRX; the site calls it only when a patient links (≈ once
+      per patient; 5 tries/account, 20/connection per hour).
+- [ ] Delete the test DRX keys that were shared in chat (`DRXhYJ…`, `DRXP06v2…`).
+- [ ] Live smoke test with one consenting patient (scenarios in the chat of 2026-10-12).
