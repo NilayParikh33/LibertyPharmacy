@@ -111,6 +111,7 @@ Every deployed image is also kept under its commit tag (e.g.
 | 2026-10-11 | `6299426` | Change password on Sign-in & security (confirmed with passkey or authenticator). `:prev` = `fe521e5` |
 | 2026-10-12 | `5cf04b7` | Final DRX key in use; link form asks Rx + date of birth + name and corrects the account to DRX's values on a match. `:prev` = `6299426` |
 | 2026-10-12 | `c632c15` | Link form: clear messages for a missing date of birth or name. `:prev` = `5cf04b7` |
+| 2026-10-12 | `0b0da54` | Portal shows DRX's status per refill (Waiting Bin, Sold, Hold, cancelled, deleted, rejected reason); startup added `rx_requests.drx_fill`, `drx_fill_at`. `:prev` = `c632c15` |
 
 ---
 
