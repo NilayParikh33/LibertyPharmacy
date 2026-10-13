@@ -118,6 +118,7 @@ Every deployed image is also kept under its commit tag (e.g.
 | 2026-10-12 | `c632c15` | Link form: clear messages for a missing date of birth or name. `:prev` = `5cf04b7` |
 | 2026-10-12 | `0b0da54` | Portal shows DRX's status per refill (Waiting Bin, Sold, Hold, cancelled, deleted, rejected reason); startup added `rx_requests.drx_fill`, `drx_fill_at`. `:prev` = `c632c15` |
 | 2026-10-13 | `9303c0d` | Newest request per Rx follows DRX's (reused) fill; older ones show "Replaced by request #N". `:prev` = `0b0da54` |
+| 2026-10-13 | `c41cdb1` | Admin → Staff (own login per person via one-time setup links); startup added `admin_invites`. `:prev` = `9303c0d` |
 
 ---
 
