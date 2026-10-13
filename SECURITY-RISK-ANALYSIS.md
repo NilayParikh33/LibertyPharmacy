@@ -439,6 +439,15 @@ it is a required specification with no "addressable" flexibility.*
 - [ ] Periodic review of who holds access (quarterly recommended)
 - [ ] Access is granted on a minimum-necessary basis
 
+*Tooling in place (2026-10-13):* **Admin → Staff** gives each person their
+own admin login through a one-time setup link (24 hours, single use; they
+choose their own password and authenticator, which nobody else sees).
+**Disable** signs the person out everywhere at once and blocks sign-in;
+nobody can disable themselves. **New setup link** replaces a lost phone or
+forgotten password (completing it also re-enables a disabled account).
+Everything is audited (`admin.staff.*`). The written procedures above are
+still the pharmacy's to adopt.
+
 ### A-06 — Incident response and breach notification · **Required** · §164.308(a)(6), §164.400–414
 - [ ] Written breach-notification procedure exists (60-day clock to notify
       affected individuals and HHS; media notice if 500+ individuals in a

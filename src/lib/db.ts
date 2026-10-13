@@ -336,6 +336,23 @@ async function init(): Promise<AppDb> {
     );
     CREATE INDEX IF NOT EXISTS idx_admin_sessions_user ON admin_sessions(admin_user_id);
 
+    -- One-time setup links for staff (src/lib/admin-staff.ts). An admin creates
+    -- one; the staff member opens it, chooses a password and scans the
+    -- authenticator QR. Only the token's SHA-256 is stored. The account row in
+    -- admin_users is created (or, for an existing user, reset) only when the
+    -- link is completed.
+    CREATE TABLE IF NOT EXISTS admin_invites (
+      id          SERIAL PRIMARY KEY,
+      token_hash  TEXT NOT NULL UNIQUE,
+      username    TEXT NOT NULL,
+      totp_secret TEXT NOT NULL,                 -- [enc] seed shown on the setup page
+      created_by  TEXT NOT NULL,                 -- admin username
+      attempts    INTEGER NOT NULL DEFAULT 0,
+      expires_at  TEXT NOT NULL,
+      used_at     TEXT,
+      created_at  TEXT NOT NULL DEFAULT (${NOW_ISO})
+    );
+
     -- General-inquiry contact form submissions. The API route screens out
     -- anything that obviously looks like PHI, but free-text screening cannot
     -- be relied on ("my blood pressure medication makes me dizzy" defeats

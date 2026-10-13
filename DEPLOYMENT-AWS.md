@@ -41,6 +41,11 @@ Since 2026-10-11 also `DRX_API_BASE_URL  DRX_API_KEY  DRX_ENABLED  PATIENT_AUTH_
 apps instead of emailed codes (SECURITY-RISK-ANALYSIS.md §7E). Set it back to
 `email` once SES production access is granted.
 
+**Adding admin staff:** Admin → Staff → enter a username → copy the setup
+link (shown once, valid 24 h) and text it to that person. They choose their
+own password and scan the authenticator QR. Never share a login. On departure,
+**Disable** them there.
+
 **Patient locked out (device mode):** they call; staff confirm name, date of
 birth and phone on file, then Admin → Patients → search the email → **Reset
 sign-in**, and read the temporary password (shown once) to the patient.

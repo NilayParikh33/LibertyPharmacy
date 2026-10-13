@@ -9,6 +9,7 @@ const links = [
   { label: "Messages", href: "/admin/messages" },
   { label: "Rx Requests", href: "/admin/requests" },
   { label: "Patients", href: "/admin/patients" },
+  { label: "Staff", href: "/admin/staff" },
   { label: "Blog Posts", href: "/admin/posts" },
   { label: "Site Settings", href: "/admin/settings" },
 ];
