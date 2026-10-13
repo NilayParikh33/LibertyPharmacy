@@ -308,8 +308,10 @@ inactivated in DRX is shown as such. Rx numbers DRX rejected show DRX's reason
 ("Not accepted: Rx is expired. We'll contact you.") and stay with staff as a
 To-Do. The request becomes Completed when every Rx is picked up / sent (or its
 To-Do is ticked done), Cancelled when every Rx was cancelled or deleted.
-Limit: a second refill of the same Rx on the same day would match the first
-day's fill (DRX normally rejects that as too soon).
+DRX reuses one fill record per Rx (seen live 2026-10-13: the same fill went
+Waiting Bin → Hold → Waiting Bin → Sold across two requests), so only the
+newest request for an Rx follows it. Older requests keep the last status they
+really had and show "Replaced by request #N"; nothing is deleted.
 
 ### 6.4 Staying signed in (sessions & cookies)
 

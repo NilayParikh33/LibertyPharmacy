@@ -132,6 +132,8 @@ export interface PatientRequestView {
   rxStatus: { rx: string; label: string; drx: string | null }[];
   /** At least one Rx is in DRX's Waiting Bin and the request is still open. */
   ready: boolean;
+  /** Every Rx was asked for again in a newer request, which now tracks it. */
+  replaced: boolean;
 }
 
 /** A patient's own recent requests, newest first. */
@@ -163,6 +165,8 @@ export async function listPatientRequests(patientId: number, limit = 10): Promis
       : refill.items.map((i) => {
           const key = String(Number(i.rxNumber) || i.rxNumber);
           const fill = fills.find((f) => f.rx === key);
+          if (fill?.replacedBy)
+            return { rx: i.rxNumber, label: `Replaced by request #${fill.replacedBy}`, drx: fill.status === "Accepted" ? null : fill.status };
           if (fill) return { rx: i.rxNumber, label: friendlyFillStatus(fill.status, refill.deliveryMethod), drx: fill.status };
           const o = outcomes.find((x) => x.rxNumber === key || x.rxNumber === i.rxNumber);
           if (o?.ok) return { rx: i.rxNumber, label: "Accepted, waiting to be filled", drx: null };
@@ -185,7 +189,8 @@ export async function listPatientRequests(patientId: number, limit = 10): Promis
             .sort()[0] ?? null
         : null,
     rxStatus,
-    ready: open && fills.some((f) => isReady(f.status)),
+    ready: open && fills.some((f) => !f.replacedBy && isReady(f.status)),
+    replaced: rxStatus.length > 0 && fills.length === rxStatus.length && fills.every((f) => f.replacedBy !== undefined),
     };
   });
 }

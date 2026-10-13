@@ -33,6 +33,12 @@ export interface DrxFillState {
   /** DRX's status word for the fill, or our note when there is no fill. */
   status: string;
   fillDate: string | null;
+  /**
+   * Set when a newer request asked for the same Rx. DRX reuses one fill per
+   * Rx, so only the newest request follows it; this one keeps the last status
+   * it really had (`status`, frozen) and points to the newer request.
+   */
+  replacedBy?: number;
 }
 
 /** The pharmacy-local calendar date of an instant, YYYY-MM-DD. */
@@ -79,14 +85,27 @@ export async function refreshRequestStatuses(patientId: number): Promise<void> {
     const drxPatientId = await getDrxPatientId(patientId);
     if (drxPatientId === null) return;
     const db = await getDb();
-    const open = await db
+    // Recent refills in any state: a closed newer request still replaces an
+    // older open one for the same Rx.
+    const rows = await db
       .prepare(
-        `SELECT id, details, created_at, drx_fill, drx_result FROM rx_requests
-         WHERE patient_id = ? AND kind = 'refill' AND status IN ('new','in_progress') AND drx_status IS NOT NULL
-         ORDER BY id DESC LIMIT 20`
+        `SELECT id, status, details, created_at, drx_fill, drx_result FROM rx_requests
+         WHERE patient_id = ? AND kind = 'refill' AND drx_status IS NOT NULL
+         ORDER BY id DESC LIMIT 50`
       )
-      .all<{ id: number; details: string; created_at: string; drx_fill: string | null; drx_result: string | null }>(patientId);
+      .all<{ id: number; status: string; details: string; created_at: string; drx_fill: string | null; drx_result: string | null }>(
+        patientId
+      );
+    const open = rows.filter((r) => r.status === "new" || r.status === "in_progress");
     if (!open.length) return;
+
+    // Only Rx numbers DRX accepted are tracked; rejected ones keep DRX's
+    // reason and are with staff as a To-Do (so the request stays open).
+    const acceptedOf = (r: (typeof rows)[number]) =>
+      new Set(readDrxResult(r.drx_result).filter((o) => o.ok).map((o) => String(o.rxNumber)));
+    // The newest request that DRX accepted each Rx for (rows are newest first).
+    const newestFor = new Map<string, number>();
+    for (const r of rows) for (const rx of acceptedOf(r)) if (!newestFor.has(rx)) newestFor.set(rx, r.id);
 
     const { medications } = await drxPatientProfile(drxPatientId);
     const byRx = new Map(medications.map((m) => [m.rxNumber, m]));
@@ -99,24 +118,32 @@ export async function refreshRequestStatuses(patientId: number): Promise<void> {
         continue;
       }
       const since = pharmacyDate(r.created_at);
-      // Only Rx numbers DRX accepted are tracked; rejected ones keep DRX's
-      // reason and are with staff as a To-Do (so the request stays open).
-      const accepted = new Set(readDrxResult(r.drx_result).filter((o) => o.ok).map((o) => String(o.rxNumber)));
+      const accepted = acceptedOf(r);
+      const previous = readFillStates(r.drx_fill);
       const states = details.items
         .map((i) => String(Number(i.rxNumber) || i.rxNumber))
         .filter((rx) => accepted.has(rx))
-        .map((rx) => stateFor(rx, byRx.get(rx), since))
+        .map((rx): DrxFillState | null => {
+          const newer = newestFor.get(rx);
+          if (newer !== undefined && newer !== r.id) {
+            const last = previous.find((p) => p.rx === rx);
+            return { rx, status: last?.status ?? "Accepted", fillDate: last?.fillDate ?? null, replacedBy: newer };
+          }
+          return stateFor(rx, byRx.get(rx), since);
+        })
         .filter((s): s is DrxFillState => s !== null);
       const json = JSON.stringify(states);
-      const before = JSON.stringify(readFillStates(r.drx_fill));
-      if (json === before) continue;
+      if (json === JSON.stringify(previous)) continue;
 
+      // Closed once every Rx is settled: picked up, cancelled/deleted, or
+      // handed over to a newer request.
       const all = states.length === details.items.length && states.length > 0;
-      const status = all && states.every((s) => isDone(s.status))
-        ? "completed"
-        : all && states.every((s) => isCancelled(s.status))
-          ? "cancelled"
-          : null;
+      const settled = (x: DrxFillState) => x.replacedBy !== undefined || isDone(x.status) || isCancelled(x.status);
+      const status = !all || !states.every(settled)
+        ? null
+        : states.some((x) => x.replacedBy === undefined && isDone(x.status))
+          ? "completed"
+          : "cancelled";
       const at = new Date().toISOString();
       await db
         .prepare("UPDATE rx_requests SET drx_fill = ?, drx_fill_at = ? WHERE id = ?")
@@ -131,7 +158,9 @@ export async function refreshRequestStatuses(patientId: number): Promise<void> {
         action: "drx.refill.status",
         subject: `rx_request:${r.id}`,
         outcome: "success",
-        detail: states.map((s) => s.status).join(" | ").slice(0, 200) + (status ? ` → ${status}` : ""),
+        detail:
+          states.map((x) => (x.replacedBy ? `replaced by #${x.replacedBy}` : x.status)).join(" | ").slice(0, 200) +
+          (status ? ` → ${status}` : ""),
       });
     }
   } catch (err) {

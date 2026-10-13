@@ -243,10 +243,10 @@ export default async function PortalPage({
                       </div>
                       <span
                         className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                          r.ready ? "bg-green-50 text-green-800" : statusLabel[r.status].cls
+                          r.ready ? "bg-green-50 text-green-800" : r.replaced ? "bg-slate-100 text-slate-600" : statusLabel[r.status].cls
                         }`}
                       >
-                        {r.ready ? "Ready" : statusLabel[r.status].text}
+                        {r.ready ? "Ready" : r.replaced ? "Replaced" : statusLabel[r.status].text}
                       </span>
                       {r.rxStatus.length > 0 && (
                         <ul className="w-full space-y-1 border-t border-slate-100 pt-2 text-xs text-slate-600">
@@ -254,7 +254,10 @@ export default async function PortalPage({
                             <li key={x.rx}>
                               <span className="font-medium text-slate-700">Rx {x.rx}:</span> {x.label}
                               {x.drx && x.drx !== x.label && (
-                                <span className="text-slate-400"> (pharmacy status: {x.drx})</span>
+                                <span className="text-slate-400">
+                                  {" "}
+                                  ({x.label.startsWith("Replaced") ? "last pharmacy status" : "pharmacy status"}: {x.drx})
+                                </span>
                               )}
                             </li>
                           ))}
