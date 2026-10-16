@@ -178,8 +178,8 @@ export default async function HomePage() {
               <p className="eyebrow">Shop</p>
               <h2 className="section-title mt-3">Shop by category</h2>
               <p className="section-lead">
-                Vitamins on the shelf, peptides compounded to your prescription —
-                and a pharmacist to help with both.
+                Pharmacist-vetted vitamins and wellness essentials — with a
+                pharmacist to help you choose.
               </p>
             </div>
             <Link href="/products" className="group inline-flex items-center gap-1.5 text-sm font-semibold text-navy-700">
@@ -188,7 +188,7 @@ export default async function HomePage() {
             </Link>
           </Reveal>
 
-          <div className="mt-10 grid gap-6 md:grid-cols-2">
+          <div className={`mt-10 grid gap-6 ${shopCategories.length > 1 ? "md:grid-cols-2" : "max-w-2xl"}`}>
             {shopCategories.map((cat, i) => (
               <Reveal as="div" key={cat.id} delay={stagger(i)} variant="scale" className="flex">
                 <Link

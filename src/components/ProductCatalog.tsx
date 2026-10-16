@@ -72,7 +72,7 @@ export default function ProductCatalog({
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search vitamins and peptides…"
+            placeholder="Search products…"
             autoComplete="off"
             className="input-field rounded-full py-3.5 pl-12 pr-12 text-base [&::-webkit-search-cancel-button]:hidden"
           />

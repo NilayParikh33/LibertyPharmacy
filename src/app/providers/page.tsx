@@ -18,7 +18,7 @@ const programs = [
   },
   {
     title: "Men's Care",
-    body: "Compounded therapies for low testosterone, andropause, erectile dysfunction, and chronic prostatitis, tailored to each patient's needs.",
+    body: "Therapies for low testosterone, andropause, erectile dysfunction, and chronic prostatitis, tailored to each patient's needs.",
   },
   {
     title: "Weight Management",
@@ -30,7 +30,7 @@ const programs = [
   },
   {
     title: "Pain Management",
-    body: "Compounded topical and oral options for bone and joint conditions, muscle pain, neuropathies, and complex pain syndromes.",
+    body: "Topical and oral options for bone and joint conditions, muscle pain, neuropathies, and complex pain syndromes.",
   },
 ];
 

@@ -36,6 +36,11 @@ export type ProductCategory = {
   image: string;
   /** One-line note shown under the section heading, e.g. an Rx notice. */
   note?: string;
+  /**
+   * Taken off the website: the category, its products and their pages are
+   * not shown anywhere (pages 404). Kept here so it can be switched back on.
+   */
+  hidden?: boolean;
 };
 
 export type Product = {
@@ -65,7 +70,7 @@ export type Product = {
   imageAlt?: string;
 };
 
-export const productCategories: ProductCategory[] = [
+const allCategories: ProductCategory[] = [
   {
     id: "wellness",
     label: "Vitamins & Wellness",
@@ -76,6 +81,8 @@ export const productCategories: ProductCategory[] = [
   {
     id: "peptides",
     label: "Peptides",
+    // Hidden on the pharmacy's request (2026-10-16). Set to false to bring back.
+    hidden: true,
     blurb: "Prescription peptide therapies, compounded to your prescriber's exact order.",
     icon: "dna",
     image: "/products/category-peptides.webp",
@@ -84,7 +91,7 @@ export const productCategories: ProductCategory[] = [
   },
 ];
 
-export const products: Product[] = [
+const allProducts: Product[] = [
   // --- Vitamins & Wellness --------------------------------------------------
   {
     id: "daily-multivitamin",
@@ -222,6 +229,12 @@ export const products: Product[] = [
 ];
 
 /** Products in one category, in catalog order. */
+/** Categories shown on the website (hidden ones left out). */
+export const productCategories: ProductCategory[] = allCategories.filter((c) => !c.hidden);
+
+/** Products shown on the website: only those in a visible category. */
+export const products: Product[] = allProducts.filter((p) => productCategories.some((c) => c.id === p.categoryId));
+
 export function productsByCategory(categoryId: string): Product[] {
   return products.filter((p) => p.categoryId === categoryId);
 }

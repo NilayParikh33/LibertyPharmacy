@@ -10,7 +10,7 @@ import { productCategories } from "@/lib/products";
 export const metadata: Metadata = {
   title: "Products",
   description:
-    "Pharmacist-vetted vitamins and prescription peptide therapies compounded to order at Liberty Pharmacy in Austin, TX.",
+    "Pharmacist-vetted vitamins and wellness essentials at Liberty Pharmacy in Austin, TX.",
 };
 
 /**
@@ -38,7 +38,7 @@ export default async function ProductsPage({
       <PageHero
         eyebrow="Shop"
         title="Products & Supplies"
-        subtitle="Pharmacist-vetted vitamins, and prescription peptides compounded to order — with a pharmacist to guide you through both."
+        subtitle="Pharmacist-vetted vitamins and wellness essentials — with a pharmacist to guide you."
       />
 
       <section className="py-16 sm:py-20">
