@@ -2,7 +2,14 @@
 Monthly AWS bill summary for Liberty Pharmacy, emailed on the 2nd of each month.
 
 Runs as the Lambda function `liberty-billing-summary` (us-east-1), triggered by
-the EventBridge rule of the same name. Set up by ./setup.sh.
+the EventBridge rule of the same name on the 5th (after AWS finalises the
+previous month's invoice). Set up by ./setup.sh.
+
+Reliability: if SES can't send, the same summary is published to the SNS topic
+`liberty-billing-alerts` (email subscription, independent of SES). Any other
+failure trips the CloudWatch alarm `liberty-billing-summary-failed`, which also
+notifies that topic. This email is a summary; AWS charges the card on file
+automatically and emails the official PDF invoice.
 
 Reports for the month that just ended:
   - AWS usage before credits (what the month really cost)
@@ -96,20 +103,29 @@ def handler(event, context):
     lines += ["", "Top services:"] + [f"  {name}: {_money(cost)}" for name, cost in top]
     lines += [
         "",
+        "AWS charges the card on file automatically; you don't pay from this email.",
+        "The official invoice (PDF) is emailed separately by AWS.",
         "A budget alert emails this address if monthly usage passes $35.",
         "Details: AWS console → Billing and Cost Management → Bills.",
     ]
     body = "\n".join(lines)
     print(body)
 
-    ses.send_email(
-        FromEmailAddress=os.environ["FROM_EMAIL"],
-        Destination={"ToAddresses": [os.environ["TO_EMAIL"]]},
-        Content={
-            "Simple": {
-                "Subject": {"Data": f"AWS bill {month_name}: you pay {_money(to_pay)} (usage {_money(usage)})"},
-                "Body": {"Text": {"Data": body}},
-            }
-        },
-    )
+    subject = f"AWS bill {month_name}: you pay {_money(to_pay)} (usage {_money(usage)})"
+    try:
+        ses.send_email(
+            FromEmailAddress=os.environ["FROM_EMAIL"],
+            Destination={"ToAddresses": [os.environ["TO_EMAIL"]]},
+            Content={"Simple": {"Subject": {"Data": subject}, "Body": {"Text": {"Data": body}}}},
+        )
+    except Exception as err:
+        # SES down, sandboxed or misconfigured: deliver through SNS instead,
+        # then fail so the CloudWatch alarm also flags that SES needs a look.
+        print(f"SES send failed, falling back to SNS: {err}")
+        boto3.client("sns", region_name="us-east-1").publish(
+            TopicArn=os.environ["TOPIC_ARN"],
+            Subject=subject[:100],
+            Message=body + f"\n\n(Sent via AWS notifications because the normal email failed: {err})",
+        )
+        raise
     return {"month": month_name, "usage": usage, "credits": credits_applied, "to_pay": to_pay, "credits_left": left}

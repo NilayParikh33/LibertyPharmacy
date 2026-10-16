@@ -129,11 +129,19 @@ Every deployed image is also kept under its commit tag (e.g.
   libertypharmacy@gmail.com at 80% and 100% actual, and when the month is
   forecast to pass $35.
 - **Lambda `liberty-billing-summary`** (python3.13) + EventBridge rule of the
-  same name, `cron(0 14 2 * ? *)`: on the 2nd of each month emails last
-  month's usage, credits applied, amount to pay and credits left (via SES from
-  noreply@rxlibertypharmacy.com; recipient must be SES-verified while in the
-  sandbox). Code and setup script: `ops/billing-summary/` (re-run `setup.sh`
-  in CloudShell to change the address or code).
+  same name, `cron(0 14 5 * ? *)`: on the 5th of each month (after AWS
+  finalises the invoice) emails last month's usage, credits applied, amount to
+  pay and credits left (via SES from noreply@rxlibertypharmacy.com; recipient
+  must be SES-verified while in the sandbox). Code and setup script:
+  `ops/billing-summary/` (re-run `setup.sh` in CloudShell to change the
+  address or code).
+- **Safety net:** SNS topic `liberty-billing-alerts` (email subscription to
+  libertypharmacy@gmail.com, independent of SES). If SES fails the summary is
+  sent through SNS instead; CloudWatch alarm `liberty-billing-summary-failed`
+  emails the topic on any error.
+- **Official AWS emails** (the authoritative ones): alternate **Billing**
+  contact = libertypharmacy@gmail.com, and PDF invoices by email turned on in
+  Billing preferences. AWS charges the card on file automatically each month.
 - Normal cost of this setup ≈ $29–30/month before credits (RDS ≈ $16, EC2 ≈ $7,
   public IPv4 ≈ $3.60, Secrets Manager + Route 53 ≈ $2). Credits: $122.52 left
   on 2026-10-16.
